@@ -92,6 +92,20 @@
 - 提交：本次提交
 - 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
 
+### OP-012 M10 对齐官方游戏规则（缺陷修复）
+
+- 时间：2026-10-07
+- 背景：用户指出实现逻辑有问题。核对官方规则后确认——v1 把邻接规则写反了：官方要求「同色必须角对角相接、禁止同色边贴边；异色允许边贴边、禁止角对角接触」，而旧实现是「同色必须边相邻、禁止异色边相邻」。
+- 操作（分支 fix/official-adjacency-rules）：
+  - `js/rules.js`：新增 `RULES_VERSION=2`、`DIAGS`，把原实现保留为 `canPlaceV1`，新增官方规则 `canPlaceV2`，`canPlace()` 按 `state.rulesVersion` 分派；共用前置校验 `commonPlacement()`（越界/重叠/首子覆盖角）
+  - `js/game.js`：`createGame` 默认写入 `rulesVersion: 2`；`rebuild/fromJSON` 对缺省值按 **v1** 处理（兼容旧存档）；`toJSON` 输出该字段
+  - `js/notation.js`：文本棋谱新增 `Rules: vN` 行并可解析；缺省按 v1
+  - `js/i18n.js` / `js/ui.js` / `js/storage.js`：新增错误文案（`same_color_edge` / `opposite_corner` / `no_own_corner`）、对局横幅增加规则提示、历史与回放页标注「旧规则对局（v1）」
+  - `tests/run-all.js`：重写规则用例为官方邻接矩阵（同色角/边、异色角/边四种组合），新增 v1 兼容与双版本整局模拟、棋谱版本往返
+  - 文档：新增 `docs/RULES.md`（官方规则 + 常见误区 + 实现对照 + 版本策略），更新 `docs/DESIGN.md`（规则章节拆为 v2 官方 / v1 兼容）、`README.md`、`docs/IMPLEMENTATION.md`
+- 验证：`node tests/run-all.js` **556/556**；服务端 `--selftest` OK；`tests/browser-smoke.js` **25/25**；`tests/browser-lan-smoke.js` **18/18**
+- 提交：见 PR（分支 fix/official-adjacency-rules）
+- 遗留：平局细则（官方部分版本为"先出完者优先"）未实现，已在 docs/RULES.md 列为已知差异
 ### OP-011 M9 分支规则与 PR 流程
 
 - 时间：2026-10-07

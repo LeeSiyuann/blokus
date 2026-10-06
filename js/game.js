@@ -62,6 +62,7 @@
       mode: o.mode || 'hotseat',
       lang: o.lang || 'zh',
       sound: o.sound !== false,
+      rulesVersion: o.rulesVersion || rules.RULES_VERSION,
       seatCount,
       seatIds,
       players,
@@ -169,6 +170,7 @@
   function rebuild(source, moves) {
     const state = createGame({
       mode: source.mode, seatCount: source.seatCount, lang: source.lang, sound: source.sound,
+      rulesVersion: source.rulesVersion || 1,
       seatIds: source.seatIds,
       id: source.id, createdAt: source.createdAt, startedAt: source.startedAt,
       server: source.server,
@@ -200,6 +202,7 @@
       id: state.id, createdAt: state.createdAt, startedAt: state.startedAt,
       updatedAt: state.updatedAt, finishedAt: state.finishedAt,
       status: state.status, mode: state.mode, lang: state.lang, sound: state.sound,
+      rulesVersion: state.rulesVersion || 1,
       seatCount: state.seatCount, seatIds: state.seatIds,
       players: state.players.map((p) => ({
         id: p.id, name: p.name, controller: p.controller, ai: p.ai,
@@ -220,6 +223,7 @@
     if (obj.moves.length > 5000) throw new Error('too many moves');
     const state = createGame({
       mode: obj.mode, seatCount: obj.seatCount || obj.players.length,
+      rulesVersion: obj.rulesVersion || 1,
       seatIds: obj.seatIds,
       lang: obj.lang, sound: obj.sound, id: obj.id, createdAt: obj.createdAt,
       startedAt: obj.startedAt, server: obj.server,
