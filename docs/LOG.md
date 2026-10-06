@@ -92,3 +92,20 @@
 - 提交：本次提交
 - 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
 
+### OP-011 M9 分支规则与 PR 流程
+
+- 时间：2026-10-07
+- 操作（全部在临时分支 chore/branch-rules 上完成，遵循新规则）：
+  - 新增 `.githooks/pre-commit`（禁止在 main/master 提交）与 `.githooks/pre-push`（禁止推送 main/master）
+  - 新增 `.gitattributes`（hook/脚本强制 LF 检出，避免 Windows 下 sh 解释器报错）
+  - 新增 `scripts/new-branch.sh` / `scripts/new-branch.cmd`（一键创建临时分支）
+  - 新增 `docs/BRANCH-RULES.md`（规则说明 + GitHub 规则集/自动删除分支的网页设置步骤 + 标准流程）
+  - 更新 `.github/pull_request_template.md`（增加"合入后立即删除源分支"固定勾选项）
+  - 更新 `AGENTS.md` 至 v1.2（新增第 9 节：分支与合入规则，强制项）
+  - 本地执行 `git config core.hooksPath .githooks` 并验证
+- 验证：
+  - `BK_BRANCH_OVERRIDE=main .githooks/pre-commit` → 拦截（exit 1）；`chore/branch-rules` → 放行（exit 0）
+  - `pre-push` 模拟：`refs/heads/main` → 拦截（exit 1）；`refs/heads/fix/x` → 放行（exit 0）
+- 提交：见 PR 内的提交（分支 chore/branch-rules）
+- 遗留：GitHub 网页侧两项需仓库所有者点击完成 —— ① Settings → Rules → protect-main 规则集；② Settings → General → Automatically delete head branches（步骤见 docs/BRANCH-RULES.md 第 3 节）
+
