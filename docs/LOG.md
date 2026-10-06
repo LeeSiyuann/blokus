@@ -61,3 +61,15 @@
 - 提交：b890501（本文件随该提交入库）
 - 遗留：M8 待授权
 
+### OP-008 GitHub 远端接入尝试
+
+- 时间：2026-10-07
+- 操作：通过 GitHub 插件（MCP）确认账号 LeeSiyuann；调用 create_repository 创建 `blokus`；配置本地远端 origin=https://github.com/LeeSiyuann/blokus.git；新增 .github/pull_request_template.md
+- 结果：
+  - `get_me` 成功（账号 LeeSiyuann / 李思源）
+  - `create_repository` 失败：**403 Resource not accessible by integration**（插件令牌无 administration 权限）
+  - 本地远端与 PR 模板已完成
+- 验证：`git remote -v` 显示 origin；`git log` 显示提交 0cec778
+- 提交：0cec778
+- 遗留：M8 需用户二选一（网页建空仓库后我推送 / 为插件补授权后我建仓）
+
