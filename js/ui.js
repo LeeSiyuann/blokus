@@ -257,7 +257,7 @@
       const info = BKNS.turnInfo(s);
       const who = (s.mode === 'lan') ? (turnIdx === app.lan.seat ? t('game.yourTurn') : p.name) : p.name;
       banner.innerHTML = '<span style="color:' + colorOf(p.id) + '">●</span> ' + t('game.turn') + ': <b>' + who + '</b>' +
-        '<small>' + (info.mustPass ? t('game.mustPass') : t('game.hintSelect')) + '</small>';
+        '<small>' + (info.mustPass ? t('game.mustPass') : t('game.hintSelect')) + ' · ' + t('game.ruleHint') + '</small>';
     }
     renderPlayersPanel($('#playersPanel'), s);
     renderTray();
@@ -451,7 +451,8 @@
       sub.className = 'history-sub';
       const d = new Date(item.updatedAt || item.createdAt);
       sub.textContent = d.toLocaleString() + ' · ' + t('history.mode_' + (item.mode || 'hotseat')) + ' · ' +
-        item.moves + ' ' + t('history.moves') + ' · ' + t('history.status_' + (item.status || 'playing'));
+        item.moves + ' ' + t('history.moves') + ' · ' + t('history.status_' + (item.status || 'playing')) +
+        (((item.rulesVersion || 1) < 2) ? ' · ' + t('game.legacyRules') : '');
       meta.appendChild(title); meta.appendChild(sub);
       if (item.scores) {
         const scoreLine = document.createElement('div');
@@ -521,6 +522,9 @@
     const moves = gameJson.moves || [];
     let html = '<b>' + escapeHtml((gameJson.players || []).map((p) => p.name).join(' vs ')) + '</b>';
     html += '<small>' + (index === 0 ? t('replay.init') : t('replay.step', { n: index, total })) + '</small>';
+    if ((gameJson.rulesVersion || 1) < 2) {
+      html += '<small>' + t('game.legacyRules') + '</small>';
+    }
     if (index > 0 && moves[index - 1]) {
       const m = moves[index - 1];
       const p = gameJson.players[m.player];

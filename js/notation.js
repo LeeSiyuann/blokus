@@ -31,6 +31,7 @@
     lines.push('Game: ' + state.id);
     lines.push('Date: ' + state.createdAt);
     lines.push('Mode: ' + state.mode + (state.mode === 'lan' ? ' (LAN)' : ''));
+    lines.push('Rules: v' + (state.rulesVersion || 1));
     lines.push('Players: ' + state.players.map((p) => ID_TO_LETTER[p.id] + '=' + p.name).join(' '));
     if (state.result) {
       lines.push('Result: ' + state.players.map((p) => ID_TO_LETTER[p.id] + '=' + state.result.scores[p.id]).join(' '));
@@ -74,6 +75,7 @@
       const mId = /^Game:\s*(.+)$/i.exec(line); if (mId) { meta.id = mId[1].trim(); continue; }
       const mDate = /^Date:\s*(.+)$/i.exec(line); if (mDate) { meta.createdAt = mDate[1].trim(); continue; }
       const mMode = /^Mode:\s*(\w+)/i.exec(line); if (mMode) { meta.mode = mMode[1].toLowerCase(); continue; }
+      const mRules = /^Rules:\s*v?(\d+)/i.exec(line); if (mRules) { meta.rulesVersion = parseInt(mRules[1], 10) || 1; continue; }
     }
 
     const letters = Object.keys(meta.names).length
@@ -86,6 +88,7 @@
     const seatCount = players.length;
     const state = game.createGame({
       mode: meta.mode === 'lan' ? 'lan' : 'hotseat',
+      rulesVersion: meta.rulesVersion || 1,
       seatCount, players,
       id: meta.id, createdAt: meta.createdAt
     });
@@ -150,6 +153,7 @@
       updatedAt: state.updatedAt,
       status: state.status,
       mode: state.mode,
+      rulesVersion: state.rulesVersion || 1,
       seatCount: state.seatCount,
       players: state.players.map((p) => p.name),
       colors: state.players.map((p) => p.id),

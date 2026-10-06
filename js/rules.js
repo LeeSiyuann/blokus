@@ -10,6 +10,14 @@
   const SIZE = 20;
   const EMPTY = -1;
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const DIAGS = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+  /**
+   * 规则版本：
+   *  1 = 旧版实现（同色必须边相邻、禁止与对手边相邻）——仅用于回放历史对局
+   *  2 = 官方 Blokus 规则（同色必须角相邻且禁止边相邻；异色允许边相邻、禁止角相邻）——新对局默认
+   */
+  const RULES_VERSION = 2;
 
   const idx = (r, c) => r * SIZE + c;
   const inBounds = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
@@ -27,11 +35,8 @@
     return placedCount(state, playerIndex) === 0;
   }
 
-  /**
-   * 校验落子合法性。
-   * @returns {{ok:boolean, code?:string, cells?:number[][]}}
-   */
-  function canPlace(state, playerIndex, pieceId, rot, mirror, anchor) {
+  /** 通用前置校验：棋子归属、越界、重叠、首子覆盖起始角 */
+  function commonPlacement(state, playerIndex, pieceId, rot, mirror, anchor) {
     const piece = PIECES[pieceId];
     if (!piece) return { ok: false, code: 'unknown_piece' };
     const remaining = state.remaining[playerIndex] || [];
@@ -50,6 +55,15 @@
       const covers = cells.some(([r, c]) => r === corner[0] && c === corner[1]);
       if (!covers) return { ok: false, code: 'not_corner' };
     }
+    return { ok: true, cells, first };
+  }
+
+  /** v1（旧版变体，仅回放用）：同色边相邻，禁止与异色边相邻 */
+  function canPlaceV1(state, playerIndex, pieceId, rot, mirror, anchor) {
+    const base = commonPlacement(state, playerIndex, pieceId, rot, mirror, anchor);
+    if (!base.ok) return base;
+    const cells = base.cells;
+    const first = base.first;
 
     let ownEdge = 0, oppEdge = 0;
     for (const [r, c] of cells) {
@@ -64,6 +78,41 @@
     if (!first && ownEdge === 0) return { ok: false, code: 'no_own_edge' };
 
     return { ok: true, cells };
+  }
+
+  /** v2（官方规则）：同色必须角相邻且禁止边相邻；异色允许边相邻、禁止角相邻 */
+  function canPlaceV2(state, playerIndex, pieceId, rot, mirror, anchor) {
+    const base = commonPlacement(state, playerIndex, pieceId, rot, mirror, anchor);
+    if (!base.ok) return base;
+    const cells = base.cells;
+    const first = base.first;
+
+    let ownCorner = 0;
+    for (const [r, c] of cells) {
+      for (const [dr, dc] of DIRS) {
+        const v = cellAt(state.board, r + dr, c + dc);
+        if (v < 0) continue;
+        if (v === playerIndex) return { ok: false, code: 'same_color_edge' };
+      }
+      for (const [dr, dc] of DIAGS) {
+        const v = cellAt(state.board, r + dr, c + dc);
+        if (v < 0) continue;
+        if (v === playerIndex) ownCorner++;
+        else return { ok: false, code: 'opposite_corner' };
+      }
+    }
+    if (!first && ownCorner === 0) return { ok: false, code: 'no_own_corner' };
+    return { ok: true, cells };
+  }
+
+  /**
+   * 校验落子合法性（按 state.rulesVersion 分派）。
+   * @returns {{ok:boolean, code?:string, cells?:number[][]}}
+   */
+  function canPlace(state, playerIndex, pieceId, rot, mirror, anchor) {
+    return ((state.rulesVersion || 1) >= 2)
+      ? canPlaceV2(state, playerIndex, pieceId, rot, mirror, anchor)
+      : canPlaceV1(state, playerIndex, pieceId, rot, mirror, anchor);
   }
 
   /** 某棋子当前所有合法落点 */
@@ -157,8 +206,8 @@
   }
 
   const api = {
-    SIZE, EMPTY, DIRS, idx, inBounds, cellAt, newBoard,
-    canPlace, legalPlacements, hasAnyMove, mustPass, allLegalActions,
+    SIZE, EMPTY, DIRS, DIAGS, RULES_VERSION, idx, inBounds, cellAt, newBoard,
+    canPlace, canPlaceV1, canPlaceV2, legalPlacements, hasAnyMove, mustPass, allLegalActions,
     remainingSquares, lastPlacedPiece, scoreFor, isFinished, computeResult, placedCount
   };
 
