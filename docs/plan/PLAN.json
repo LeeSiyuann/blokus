@@ -8,13 +8,13 @@
   "milestones": [
     { "id": "M0", "title": "仓库与规范", "status": "done", "commit": "b08b804", "deliverables": ["AGENTS.md", "README.md", "docs/PLAN.md", "docs/DESIGN.md", "docs/AI-EXTENSION.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "docs/plan/PLAN.json"] },
     { "id": "M1", "title": "规则引擎", "status": "done", "commit": "6a701d8", "deliverables": ["js/pieces.js", "js/rules.js", "js/game.js", "js/notation.js", "tests/run-all.js"] },
-    { "id": "M2", "title": "启动器与界面骨架", "status": "todo", "commit": null, "deliverables": ["index.html", "styles.css", "js/i18n.js", "js/sound.js", "js/ui.js"] },
-    { "id": "M3", "title": "单机对局与存档", "status": "todo", "commit": null, "deliverables": ["js/render.js", "js/storage.js"] },
-    { "id": "M4", "title": "历史与回放", "status": "todo", "commit": null, "deliverables": ["js/replay.js"] },
-    { "id": "M5", "title": "棋谱导入导出", "status": "todo", "commit": null, "deliverables": ["js/notation.js"] },
-    { "id": "M6", "title": "局域网联机", "status": "todo", "commit": null, "deliverables": ["server/lan-server.js", "js/net.js", "launcher.cmd", "scripts/start-lan.sh"] },
-    { "id": "M7", "title": "打磨与文档", "status": "todo", "commit": null, "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md"] },
-    { "id": "M8", "title": "GitHub 远程仓库", "status": "todo", "commit": null, "deliverables": ["github.com/<user>/blokus"] }
+    { "id": "M2", "title": "启动器与界面骨架", "status": "done", "commit": "d5227b6", "deliverables": ["index.html", "styles.css", "js/i18n.js", "js/sound.js", "js/ui.js"] },
+    { "id": "M3", "title": "单机对局与存档", "status": "done", "commit": "d5227b6", "deliverables": ["js/render.js", "js/storage.js"] },
+    { "id": "M4", "title": "历史与回放", "status": "done", "commit": "d5227b6", "deliverables": ["js/replay.js"] },
+    { "id": "M5", "title": "棋谱导入导出", "status": "done", "commit": "d5227b6", "deliverables": ["js/notation.js"] },
+    { "id": "M6", "title": "局域网联机", "status": "done", "commit": "d5227b6", "deliverables": ["server/lan-server.js", "js/net.js", "launcher.cmd", "scripts/start-lan.sh"] },
+    { "id": "M7", "title": "打磨与文档", "status": "done", "commit": "docs-op-007", "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "AGENTS.md"] },
+    { "id": "M8", "title": "GitHub 远程仓库", "status": "blocked", "commit": null, "deliverables": ["github.com/<user>/blokus"], "blockedReason": "等待用户提供一次性 GitHub 授权（gh 未安装/无令牌/沙箱网络受限）" }
   ]
 }
 
