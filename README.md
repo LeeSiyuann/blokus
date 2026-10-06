@@ -16,6 +16,8 @@
 2. 主机在启动器中选择「局域网联机 → 创建房间」，把页面显示的地址/房间码发给同网段玩家；
 3. 其他玩家打开该地址，选择「加入房间」。
 
+> 3–4 人联机同样流程：房主创建房间时选择座位数，其他玩家依次加入，房主点击「开始对局」。
+
 ## 功能
 
 - 标准 20×20 四人规则：角起始、同色边相邻、禁止与对手边相邻（角可相接）、pass、终局计分。
@@ -33,6 +35,16 @@
 - AI 二次开发接口：[docs/AI-EXTENSION.md](docs/AI-EXTENSION.md)
 - 操作日志：[docs/LOG.md](docs/LOG.md)
 - 协作规范：[AGENTS.md](AGENTS.md)
+
+## 开发与验证
+
+```bash
+node tests/run-all.js            # 单元测试（491 项，零依赖）
+npm run test:all                 # 单元 + 服务端自检 + 浏览器冒烟
+node tests/browser-lan-smoke.js  # 局域网端到端（18 项）
+```
+
+浏览器测试需要本机安装 Chrome 或 Edge；截图输出在 `output/playwright/`（不入库）。
 
 ## 目录速览
 

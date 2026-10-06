@@ -16,4 +16,5 @@ server/rooms.json
 # Test / temp output
 tmp/
 *.tmp
+output/
 

@@ -57,7 +57,10 @@ Windows 若提示防火墙，请选择「允许专用网络」。跨网段/NAT �
 | js/net.js | 局域网客户端（REST + SSE） |
 | js/ui.js | 界面总控与事件绑定 |
 | server/lan-server.js | 零依赖局域网服务（静态托管 + 房间 + 裁判） |
-| tests/run-all.js | 全部测试入口 |
+| tests/run-all.js | 规则/棋谱/状态机单元测试入口 |
+| tests/browser-smoke.js | 浏览器界面冒烟测试（Chrome DevTools Protocol，零 npm 依赖） |
+| tests/browser-lan-smoke.js | 局域网端到端测试（两个页面同房对局） |
+| launcher.cmd / scripts/start-lan.sh | 一键启动局域网服务并打开浏览器 |
 | docs/* | 方案、设计、实施、AI 接口、日志 |
 
 ## 4. 开发流程（与 AGENTS.md 同步）
@@ -85,7 +88,19 @@ Windows 若提示防火墙，请选择「允许专用网络」。跨网段/NAT �
 node tests/run-all.js                             # 规则/棋谱/状态机 全量断言
 node server/lan-server.js --port 8765 --selftest  # 服务端自检（起服→自测→退出）
 node --check js/rules.js                          # 语法检查（逐文件）
+node tests/browser-smoke.js                       # 浏览器界面冒烟（需 Chrome/Edge）
+node tests/browser-lan-smoke.js                   # 局域网端到端（需 Chrome/Edge）
+npm run test:all                                  # 单元 + 服务端自检 + 浏览器冒烟
 ```
+
+### 最近一次全量验证结果（2026-10-07）
+
+| 项目 | 结果 |
+| --- | --- |
+| node tests/run-all.js | 通过 491 / 491 |
+| node server/lan-server.js --port 18345 --selftest | OK |
+| node tests/browser-smoke.js | 通过 25 / 25（截图见 output/playwright/） |
+| node tests/browser-lan-smoke.js | 通过 18 / 18 |
 
 浏览器手测清单（每次发版前）：
 
@@ -116,4 +131,5 @@ node --check js/rules.js                          # 语法检查（逐文件）
 | 版本 | 日期 | 内容 | 提交 |
 | --- | --- | --- | --- |
 | v0.1.0 | 2026-10-06 | 仓库/文档/规范初始化 | 见 docs/LOG.md |
+| v1.0.0 | 2026-10-07 | 完整实现：启动器、单机热座、局域网联机、存档、历史回放、棋谱导入导出、中英双语、音效 | 见 docs/LOG.md |
 

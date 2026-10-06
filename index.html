@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角斗士棋 BLOKUS</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-view="launcher">
+
+<header class="topbar">
+  <div class="brand"><span class="logo">◧</span><span data-i18n="app.title">角斗士棋 BLOKUS</span></div>
+  <div class="top-actions">
+    <button id="langToggle" class="btn ghost">中 / EN</button>
+    <button id="soundToggle" class="btn ghost" aria-pressed="true">🔊</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ 启动器 ============ -->
+  <section id="view-launcher" class="view">
+    <div class="hero">
+      <h1 data-i18n="launcher.title">选择游戏模式</h1>
+      <p class="muted" data-i18n="launcher.subtitle">无需安装，选择模式即可开始。</p>
+    </div>
+
+    <div class="cards">
+      <button class="card" id="btnSingle">
+        <span class="card-icon">👥</span>
+        <span class="card-title" data-i18n="launcher.single">单机热座</span>
+        <span class="card-desc" data-i18n="launcher.singleDesc">2–4 人同设备轮流下棋</span>
+      </button>
+      <button class="card" id="btnLan">
+        <span class="card-icon">📡</span>
+        <span class="card-title" data-i18n="launcher.lan">局域网联机</span>
+        <span class="card-desc" data-i18n="launcher.lanDesc">同一网络内多设备对战</span>
+      </button>
+      <button class="card" id="btnContinue">
+        <span class="card-icon">⏯️</span>
+        <span class="card-title" data-i18n="launcher.continue">继续对局</span>
+        <span class="card-desc" id="continueDesc" data-i18n="launcher.continueDesc">回到未完成的对局</span>
+      </button>
+      <button class="card" id="btnHistory">
+        <span class="card-icon">🗂️</span>
+        <span class="card-title" data-i18n="launcher.history">历史对局</span>
+        <span class="card-desc" data-i18n="launcher.historyDesc">浏览、回放与导出棋谱</span>
+      </button>
+      <button class="card" id="btnImport">
+        <span class="card-icon">📥</span>
+        <span class="card-title" data-i18n="launcher.import">导入棋谱</span>
+        <span class="card-desc" data-i18n="launcher.importDesc">从文本 / JSON 还原对局</span>
+      </button>
+    </div>
+
+    <div id="lanPanel" class="panel hidden">
+      <h3 data-i18n="lan.title">局域网联机</h3>
+      <div class="field">
+        <label data-i18n="lan.name">你的昵称</label>
+        <input id="lanName" maxlength="12" placeholder="Player">
+      </div>
+      <div class="field">
+        <label data-i18n="lan.seatCount">座位数</label>
+        <select id="lanSeats">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+        </select>
+      </div>
+      <div class="row">
+        <button id="btnCreateRoom" class="btn primary" data-i18n="lan.create">创建房间</button>
+      </div>
+      <div class="divider"></div>
+      <div class="field">
+        <label data-i18n="lan.roomCode">房间码</label>
+        <input id="lanRoomCode" maxlength="6" style="text-transform:uppercase" placeholder="ABCD">
+      </div>
+      <div class="row">
+        <button id="btnJoinRoom" class="btn" data-i18n="lan.join">加入房间</button>
+      </div>
+      <p class="hint" data-i18n="lan.hint">创建后把地址与房间码发给同网络的玩家。</p>
+    </div>
+
+    <p id="fileHint" class="hint hidden" data-i18n="launcher.fileHint"></p>
+    <p class="footer muted" data-i18n="launcher.footer">零依赖 · 零构建 · 本地存档</p>
+  </section>
+
+  <!-- ============ 单机设置 ============ -->
+  <section id="view-setup" class="view">
+    <h2 data-i18n="setup.title">单机热座设置</h2>
+    <div class="row space-between wrap">
+      <div class="row">
+        <span class="muted" data-i18n="setup.players">玩家人数</span>
+        <div class="seg" id="seatSeg">
+          <button class="seg-btn" data-seats="2">2</button>
+          <button class="seg-btn" data-seats="3">3</button>
+          <button class="seg-btn active" data-seats="4">4</button>
+        </div>
+      </div>
+    </div>
+    <div class="names" id="nameList"></div>
+    <p class="muted" data-i18n="setup.nameHint">可修改昵称，留空使用默认名。</p>
+    <div class="row end">
+      <button id="btnSetupBack" class="btn ghost" data-i18n="common.back">返回</button>
+      <button id="btnSetupStart" class="btn primary" data-i18n="setup.start">开始下棋</button>
+    </div>
+  </section>
+
+  <!-- ============ 联机大厅 ============ -->
+  <section id="view-lobby" class="view">
+    <h2 data-i18n="lan.title">局域网联机</h2>
+    <div class="lobby-card">
+      <div class="room-code">
+        <span class="muted" data-i18n="lan.roomCode">房间码</span>
+        <strong id="lobbyCode">----</strong>
+      </div>
+      <div class="room-link">
+        <span class="muted" data-i18n="lan.roomUrl">房间链接</span>
+        <code id="lobbyLink">-</code>
+        <button id="btnCopyLink" class="btn ghost" data-i18n="common.copy">复制</button>
+      </div>
+      <div class="players-panel" id="lobbyPlayers"></div>
+      <p id="lobbyStatus" class="muted"></p>
+      <div class="row end">
+        <button id="btnLobbyLeave" class="btn ghost" data-i18n="lan.leave">离开房间</button>
+        <button id="btnLobbyStart" class="btn primary" data-i18n="lan.start">开始对局</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 对局 ============ -->
+  <section id="view-game" class="view">
+    <div class="game-layout">
+      <div class="board-wrap">
+        <canvas id="boardCanvas"></canvas>
+      </div>
+      <aside class="side">
+        <div id="turnBanner" class="turn-banner"></div>
+        <div id="playersPanel" class="players-panel"></div>
+        <div id="tray" class="tray"></div>
+        <div class="controls">
+          <button id="btnRotate" class="btn" data-i18n="game.rotate">旋转 R</button>
+          <button id="btnFlip" class="btn" data-i18n="game.flip">翻转 F</button>
+          <button id="btnPlace" class="btn primary" data-i18n="game.place">落子</button>
+          <button id="btnPass" class="btn" data-i18n="game.pass">PASS</button>
+          <button id="btnUndo" class="btn" data-i18n="game.undo">悔棋</button>
+          <button id="btnExport" class="btn" data-i18n="game.export">导出棋谱</button>
+          <button id="btnExitGame" class="btn ghost" data-i18n="game.exit">退出对局</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ 历史 ============ -->
+  <section id="view-history" class="view">
+    <div class="row space-between">
+      <h2 data-i18n="history.title">历史对局</h2>
+      <button id="btnHistoryBack" class="btn ghost" data-i18n="common.back">返回</button>
+    </div>
+    <div id="historyList" class="history-list"></div>
+  </section>
+
+  <!-- ============ 回放 ============ -->
+  <section id="view-replay" class="view">
+    <div class="row space-between">
+      <h2 data-i18n="replay.title">对局回放</h2>
+      <div class="row">
+        <button id="btnReplayExport" class="btn" data-i18n="game.export">导出棋谱</button>
+        <button id="btnReplayBack" class="btn ghost" data-i18n="common.back">返回</button>
+      </div>
+    </div>
+    <div class="replay-layout">
+      <div class="board-wrap"><canvas id="replayCanvas"></canvas></div>
+      <aside class="side">
+        <div id="replayInfo" class="turn-banner"></div>
+        <div id="replayPlayers" class="players-panel"></div>
+        <div class="controls">
+          <div class="row">
+            <button id="btnFirst" class="btn" title="⏮">⏮</button>
+            <button id="btnPrev" class="btn">◀</button>
+            <button id="btnPlay" class="btn primary">▶</button>
+            <button id="btnNext" class="btn">▶</button>
+            <button id="btnLast" class="btn" title="⏭">⏭</button>
+          </div>
+          <input id="replaySlider" class="slider" type="range" min="0" max="0" value="0" step="1">
+          <div class="row">
+            <span class="muted" data-i18n="replay.speed">速度</span>
+            <div class="seg" id="speedSeg">
+              <button class="seg-btn" data-speed="0.5">0.5×</button>
+              <button class="seg-btn active" data-speed="1">1×</button>
+              <button class="seg-btn" data-speed="2">2×</button>
+              <button class="seg-btn" data-speed="4">4×</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 导出弹窗 ============ -->
+<div id="exportModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="row space-between">
+      <h3 data-i18n="export.title">棋谱导出</h3>
+      <button class="btn ghost modal-close" data-close="exportModal">✕</button>
+    </div>
+    <div class="seg" id="exportSeg">
+      <button class="seg-btn active" data-fmt="text" data-i18n="export.text">文本棋谱（BKS1）</button>
+      <button class="seg-btn" data-fmt="json" data-i18n="export.json">JSON（无损）</button>
+    </div>
+    <textarea id="exportText" class="code-area" readonly></textarea>
+    <div class="row end">
+      <button id="btnCopyExport" class="btn" data-i18n="export.copy">复制</button>
+      <button id="btnDownloadExport" class="btn primary" data-i18n="export.download">下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 导入弹窗 ============ -->
+<div id="importModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="row space-between">
+      <h3 data-i18n="export.importTitle">导入棋谱</h3>
+      <button class="btn ghost modal-close" data-close="importModal">✕</button>
+    </div>
+    <p class="muted" data-i18n="export.importHint">粘贴 BKS1 文本或 JSON，或选择文件。</p>
+    <textarea id="importText" class="code-area" placeholder="BKS1 / JSON"></textarea>
+    <div class="row end">
+      <label class="btn ghost file-label">
+        <span data-i18n="common.importFile">选择文件</span>
+        <input id="importFile" type="file" accept=".txt,.json,.bks" hidden>
+      </label>
+      <button id="btnDoImport" class="btn primary" data-i18n="export.doImport">导入并查看</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 终局弹窗 ============ -->
+<div id="overModal" class="modal hidden">
+  <div class="modal-card">
+    <h3 id="overTitle" data-i18n="game.gameOver">对局结束</h3>
+    <div id="overBody"></div>
+    <div class="row end">
+      <button id="btnOverExport" class="btn" data-i18n="game.export">导出棋谱</button>
+      <button id="btnOverAgain" class="btn" data-i18n="game.playAgain">再来一局</button>
+      <button id="btnOverBack" class="btn primary" data-i18n="common.back">返回</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/pieces.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/game.js"></script>
+<script src="js/notation.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/render.js"></script>
+<script src="js/replay.js"></script>
+<script src="js/net.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
+

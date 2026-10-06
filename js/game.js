@@ -33,8 +33,10 @@
    */
   function createGame(opts) {
     const o = opts || {};
-    const seatCount = o.seatCount || 4;
-    const seatIds = SEATS[seatCount] || SEATS[4];
+    const seatIds = (o.seatIds && o.seatIds.length >= 2 && o.seatIds.length <= 4)
+      ? o.seatIds.slice()
+      : (SEATS[o.seatCount || 4] || SEATS[4]);
+    const seatCount = seatIds.length;
     const now = Date.now();
     const players = seatIds.map((globalIdx, i) => {
       const meta = PLAYER_META[globalIdx];
@@ -167,6 +169,7 @@
   function rebuild(source, moves) {
     const state = createGame({
       mode: source.mode, seatCount: source.seatCount, lang: source.lang, sound: source.sound,
+      seatIds: source.seatIds,
       id: source.id, createdAt: source.createdAt, startedAt: source.startedAt,
       server: source.server,
       players: source.players.map((p) => ({ name: p.name, controller: p.controller, ai: p.ai }))
@@ -217,6 +220,7 @@
     if (obj.moves.length > 5000) throw new Error('too many moves');
     const state = createGame({
       mode: obj.mode, seatCount: obj.seatCount || obj.players.length,
+      seatIds: obj.seatIds,
       lang: obj.lang, sound: obj.sound, id: obj.id, createdAt: obj.createdAt,
       startedAt: obj.startedAt, server: obj.server,
       players: obj.players.map((p) => ({ name: p.name, controller: p.controller, ai: p.ai }))
