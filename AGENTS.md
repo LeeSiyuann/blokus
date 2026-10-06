@@ -1,7 +1,7 @@
 # AGENTS.md — Blokus（角斗士棋）项目协作与执行规范
 
 > 本文件是本仓库的**最高优先级工作约定**。任何 agent（人或 AI）在本仓库操作前必须先阅读并遵守。
-> 最后更新：2026-10-07（v1.1）
+> 最后更新：2026-10-07（v1.2）
 
 ## 1. 项目目标
 
@@ -120,6 +120,16 @@ node tests/browser-lan-smoke.js  # 局域网端到端（两个页面同房对局
 - 目标远端：GitHub 上与本项目同名的仓库 `blokus`。
 - 推送需要用户**一次性授权**（本机未安装 gh，且无 GITHUB_TOKEN；沙箱网络受限）。
 - **只有在用户明确提示时才创建 PR/MR**；创建后必须：① 用 `code_review` MCP 读取检查结果；② 用 `codex_app` MCP 附加 PR 工件；③ 把链接汇报给用户，由用户合入。
+
+## 9. 分支与合入规则（v1.2，强制）
+
+1. **禁止直接提交或推送到 `main`**：由仓库内 Git hooks 强制（`.githooks/pre-commit`、`.githooks/pre-push`），
+   GitHub 侧由分支规则集 `protect-main` 强制（配置步骤见 `docs/BRANCH-RULES.md`）。
+2. **所有改动必须走临时分支**：`<feat|fix|docs|chore|refactor|test>/<描述>`，例如 `fix/board-render`。
+3. **必须通过 PR 合入**，合入者是用户本人；agent 负责创建分支、提交、推送与 PR 描述。
+4. **合入后立即删除源分支**：仓库开启「Automatically delete head branches」，PR 模板含固定勾选项。
+5. 收到用户"已合入"通知后：同步 `main`，确认源分支已删除，再开下一个临时分支。
+6. 本地初始化（新克隆时执行一次）：`git config core.hooksPath .githooks`。
 
 ### M8 阻塞原因（2026-10-07 实测）
 
