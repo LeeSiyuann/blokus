@@ -1,0 +1,20 @@
+{
+  "project": "blokus",
+  "updatedAt": "2026-10-06",
+  "rules": {
+    "protocol": "每次操作：登记(doing) -> 实现 -> 测试 -> 文档 -> 日志 -> commit -> 置 done 并写 commit hash",
+    "prPolicy": "仅当用户明确提示时创建 PR/MR，由用户合入"
+  },
+  "milestones": [
+    { "id": "M0", "title": "仓库与规范", "status": "doing", "commit": null, "deliverables": ["AGENTS.md", "README.md", "docs/PLAN.md", "docs/DESIGN.md", "docs/AI-EXTENSION.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "docs/plan/PLAN.json"] },
+    { "id": "M1", "title": "规则引擎", "status": "todo", "commit": null, "deliverables": ["js/pieces.js", "js/rules.js", "js/game.js", "tests/run-all.js"] },
+    { "id": "M2", "title": "启动器与界面骨架", "status": "todo", "commit": null, "deliverables": ["index.html", "styles.css", "js/i18n.js", "js/sound.js", "js/ui.js"] },
+    { "id": "M3", "title": "单机对局与存档", "status": "todo", "commit": null, "deliverables": ["js/render.js", "js/storage.js"] },
+    { "id": "M4", "title": "历史与回放", "status": "todo", "commit": null, "deliverables": ["js/replay.js"] },
+    { "id": "M5", "title": "棋谱导入导出", "status": "todo", "commit": null, "deliverables": ["js/notation.js"] },
+    { "id": "M6", "title": "局域网联机", "status": "todo", "commit": null, "deliverables": ["server/lan-server.js", "js/net.js", "launcher.cmd", "scripts/start-lan.sh"] },
+    { "id": "M7", "title": "打磨与文档", "status": "todo", "commit": null, "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md"] },
+    { "id": "M8", "title": "GitHub 远程仓库", "status": "todo", "commit": null, "deliverables": ["github.com/<user>/blokus"] }
+  ]
+}
+

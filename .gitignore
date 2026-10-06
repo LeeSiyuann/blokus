@@ -1,0 +1,19 @@
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Node (server is zero-dependency; these are only here as a safety net)
+node_modules/
+npm-debug.log*
+
+# Local runtime data
+server/rooms.json
+*.local.json
+
+# Test / temp output
+tmp/
+*.tmp
+
