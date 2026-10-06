@@ -92,3 +92,18 @@
 - 提交：本次提交
 - 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
 
+### OP-013 M11 旋转/翻转可用性修复与反馈优化
+
+- 时间：2026-10-07
+- 背景：用户反馈"旋转和翻转功能是不是没做"。核查后确认引擎与 UI 均已实现，但**按钮始终灰显**：
+  `selectPiece()` 只刷新了托盘与棋盘，没有重新计算 `#btnRotate` / `#btnFlip` 的 `disabled` 状态
+  （该状态在上一次整帧渲染时按"未选中棋子"写入 true），因此鼠标点击按钮无效，只有键盘 R / F 能触发。
+- 操作（分支 feat/rotation-feedback）：
+  - `js/ui.js`：`selectPiece()` 改为整帧 `renderGame()` 刷新（修复按钮禁用状态）；新增 `renderSelectedPreview()` 与 `pulsePreview()`
+  - `index.html` / `styles.css`：新增「选中棋子放大预览」面板（88px 画布 + 棋子名 + `R角度 · M镜像` 标签 + 旋转/翻转脉冲动画）
+  - `tests/browser-smoke.js`：新增 7 项端到端断言（朝向标签 R000→R090、M1 标记、落子记录 `rot=90` / `mirror=1`、旋转后形状覆盖 T1、翻转后覆盖 T20），并新增截图 03b-rotate-preview.png
+  - 文档：README 功能列表补充；IMPLEMENTATION 测试计数更新为 32/32
+- 验证：`node tests/browser-smoke.js` **32/32 通过**（修复前该项为 26/32，7 项新断言中有 6 项失败 → 修复后全绿）
+- 提交：见 PR（分支 feat/rotation-feedback）
+- 遗留：无
+

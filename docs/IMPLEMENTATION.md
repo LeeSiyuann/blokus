@@ -99,7 +99,7 @@ npm run test:all                                  # 单元 + 服务端自检 + �
 | --- | --- |
 | node tests/run-all.js | 通过 491 / 491 |
 | node server/lan-server.js --port 18345 --selftest | OK |
-| node tests/browser-smoke.js | 通过 25 / 25（截图见 output/playwright/） |
+| node tests/browser-smoke.js | 通过 32 / 32（含旋转/翻转端到端断言；截图见 output/playwright/） |
 | node tests/browser-lan-smoke.js | 通过 18 / 18 |
 
 浏览器手测清单（每次发版前）：
