@@ -57,7 +57,12 @@
       'err.not_corner': '第一手必须盖住你的起始角', 'err.no_own_edge': '必须与你自己的棋子边相邻',
       'err.touch_opponent': '不能与对手的棋子边相邻', 'err.piece_used': '该棋子已使用',
       'err.has_moves': '仍有可落子位置，不能 PASS', 'err.game_over': '对局已结束',
-      'err.unknown_piece': '未知棋子', 'err.bad_action': '非法操作'
+      'err.unknown_piece': '未知棋子', 'err.bad_action': '非法操作',
+      'err.same_color_edge': '同色棋子不能边贴边，只能用角相接',
+      'err.opposite_corner': '不能与对手的棋子角对角接触',
+      'err.no_own_corner': '必须与你自己的棋子角对角相接',
+      'game.legacyRules': '旧规则对局（v1）',
+      'game.ruleHint': '同色角相接 · 异色可贴边、不可对角'
     },
     en: {
       'app.title': 'BLOKUS',
@@ -114,7 +119,12 @@
       'err.not_corner': 'First move must cover your starting corner', 'err.no_own_edge': 'Must touch your own piece edge-to-edge',
       'err.touch_opponent': 'Cannot touch an opponent edge-to-edge', 'err.piece_used': 'Piece already used',
       'err.has_moves': 'You still have legal moves — cannot pass', 'err.game_over': 'Game is over',
-      'err.unknown_piece': 'Unknown piece', 'err.bad_action': 'Illegal action'
+      'err.unknown_piece': 'Unknown piece', 'err.bad_action': 'Illegal action',
+      'err.same_color_edge': 'Same-color pieces cannot share an edge (corner contact only)',
+      'err.opposite_corner': 'Different colors cannot touch corner to corner',
+      'err.no_own_corner': 'Must touch your own piece corner to corner',
+      'game.legacyRules': 'Legacy rules (v1)',
+      'game.ruleHint': 'Own color: corners only · Rivals: edges OK, corners not'
     }
   };
 

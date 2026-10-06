@@ -1,0 +1,19 @@
+#!/bin/sh
+# 分支规则：禁止直接提交到 main / master（详见 docs/BRANCH-RULES.md）
+branch=$(git symbolic-ref --short -q HEAD 2>/dev/null)
+if [ -n "$BK_BRANCH_OVERRIDE" ]; then branch="$BK_BRANCH_OVERRIDE"; fi
+
+case "$branch" in
+  main|master)
+    echo "" >&2
+    echo "[分支规则] 禁止直接提交到 '$branch'。" >&2
+    echo "  请改为：" >&2
+    echo "    git checkout -b fix/你的改动说明      # 或 feat/… docs/… chore/…" >&2
+    echo "    git commit -m \"fix(scope): 说明\"      # 在临时分支上提交" >&2
+    echo "    git push -u origin fix/你的改动说明    # 推送临时分支并创建 PR" >&2
+    echo "  规则文件：docs/BRANCH-RULES.md（紧急绕过：git commit --no-verify，不推荐）" >&2
+    exit 1
+    ;;
+esac
+exit 0
+

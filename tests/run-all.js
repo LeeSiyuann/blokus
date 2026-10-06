@@ -52,27 +52,40 @@ section('rules');
   const s = game.createGame({ seatCount: 4 });
   const first = rules.canPlace(s, 0, 'I1', 0, 0, [0, 0]);
   ok(first.ok, '首子可覆盖起始角 A1');
+  eq(s.rulesVersion, 2, '新对局默认使用官方规则 v2');
   eq(rules.canPlace(s, 0, 'I1', 0, 0, [5, 5]).code, 'not_corner', '首子未覆盖起始角被拒');
   eq(rules.canPlace(s, 0, 'I1', 0, 0, [-1, 0]).code, 'out_of_bounds', '越界被拒');
   const s0 = game.createGame({ seatCount: 4 });
   s0.remaining[0].splice(s0.remaining[0].indexOf('Z5'), 1);
   eq(rules.canPlace(s0, 0, 'Z5', 0, 0, [0, 0]).code, 'piece_used', '已使用的棋子被拒');
 
-  // 与对手边相邻一律禁止（构造非首手局面）
-  const s2 = game.createGame({ seatCount: 2 });
-  s2.board[rules.idx(0, 0)] = 0;
-  s2.board[rules.idx(2, 2)] = 1;
-  eq(rules.canPlace(s2, 1, 'I2', 90, 0, [0, 1]).code, 'touch_opponent', '与对手边相邻被拒');
+  ok(rules.hasAnyMove(s, 0), '首子阶段存在合法着法');
 
-  // 角接触允许 + 必须与本方边相邻
-  const s3 = game.createGame({ seatCount: 4 });
-  s3.board[rules.idx(10, 10)] = 0;  // 蓝：与候选仅角接触
-  s3.board[rules.idx(12, 10)] = 1;  // 黄：提供本方边邻接
-  const cornerTouch = rules.canPlace(s3, 1, 'I2', 90, 0, [11, 9]); // cells (11,9),(12,9)：与 (12,10) 边相邻、与 (10,10) 仅角接触
-  ok(cornerTouch.ok, '与对手仅角接触允许（且与本方边相邻）');
-  eq(rules.canPlace(s3, 1, 'I2', 0, 0, [11, 10]).code, 'touch_opponent', '与对手边相邻仍被拒');
-  eq(rules.canPlace(s3, 1, 'I1', 0, 0, [15, 15]).code, 'no_own_edge', '未与本方边相邻被拒');
-  eq(rules.canPlace(s3, 1, 'I2', 0, 0, [10, 10]).code, 'overlap', '重叠被拒');
+  // ---- 官方 v2 邻接矩阵：蓝=0（对手），黄=1（本方）----
+  const m = game.createGame({ seatCount: 4 });
+  m.board[rules.idx(10, 10)] = 0;   // 蓝（对手）
+  m.board[rules.idx(12, 12)] = 1;   // 黄（本方）
+  ok(rules.canPlace(m, 1, 'I1', 0, 0, [13, 13]).ok, '同色角接触 → 合法');
+  eq(rules.canPlace(m, 1, 'I1', 0, 0, [12, 13]).code, 'same_color_edge', '同色边接触 → 非法');
+  eq(rules.canPlace(m, 1, 'I1', 0, 0, [15, 15]).code, 'no_own_corner', '无同色角接触 → 非法');
+  m.board[rules.idx(12, 14)] = 0;   // 蓝：与候选 (13,13) 对角
+  eq(rules.canPlace(m, 1, 'I1', 0, 0, [13, 13]).code, 'opposite_corner', '与对手角接触 → 非法');
+  m.board[rules.idx(12, 14)] = rules.EMPTY;
+  m.board[rules.idx(13, 12)] = 0;   // 蓝：与候选 (13,13) 共边
+  ok(rules.canPlace(m, 1, 'I1', 0, 0, [13, 13]).ok, '与对手边接触 → 合法（同色角接触仍满足）');
+  eq(rules.canPlace(m, 1, 'I1', 0, 0, [10, 10]).code, 'overlap', '重叠被拒');
+  ok(rules.canPlace(m, 1, 'I1', 0, 0, [19, 19]).ok === false, '对角 (19,19) 无接触时被拒');
+
+  // ---- v1 兼容（仅用于回放历史对局）----
+  const m1 = game.createGame({ seatCount: 4, rulesVersion: 1 });
+  eq(m1.rulesVersion, 1, '可创建 v1 规则对局');
+  ok(rules.canPlaceV1(m1, 0, 'I1', 0, 0, [0, 0]).ok, 'v1 首子覆盖起始角');
+  m1.board[rules.idx(5, 5)] = 0;    // 蓝
+  m1.board[rules.idx(9, 9)] = 1;    // 黄（远离）
+  ok(rules.canPlace(m1, 0, 'I1', 0, 0, [5, 6]).ok, 'v1 同色边相邻 → 合法');
+  eq(rules.canPlace(m1, 0, 'I1', 0, 0, [2, 2]).code, 'no_own_edge', 'v1 无同色边相邻 → 非法');
+  m1.board[rules.idx(5, 3)] = 1;    // 黄：与候选 (5,4) 共边
+  eq(rules.canPlace(m1, 0, 'I1', 0, 0, [5, 4]).code, 'touch_opponent', 'v1 与对手边相邻 → 非法');
 
   // 剩余格数 / 计分
   const s4 = game.createGame({ seatCount: 4 });
@@ -136,6 +149,15 @@ ok(sim.result.ranking.length === 4, '排名包含 4 人');
 ok(Object.values(sim.result.scores).every((v) => v >= -89 && v <= 20), '得分范围合理');
 ok(simMs < 60000, '模拟耗时在预算内 (' + simMs + 'ms)');
 
+// v1（旧规则）对局仍需可完整跑完，保证历史对局回放能力
+const simV1 = game.createGame({
+  seatCount: 4, rulesVersion: 1,
+  players: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }]
+});
+playRandom(simV1, makeRng(777));
+eq(simV1.status, 'finished', 'v1 规则随机对局可终局（回放兼容）');
+eq(simV1.rulesVersion, 1, 'v1 对局版本保持为 1');
+
 /* ---------- 4. 序列化 / 重建 / 回放 ---------- */
 section('serialize / rebuild / replay');
 {
@@ -187,6 +209,7 @@ section('notation');
 {
   const text = notation.toText(sim);
   ok(text.startsWith('BKS1'), '文本棋谱以 BKS1 开头');
+  ok(text.indexOf('Rules: v2') >= 0, '文本棋谱包含规则版本 v2');
   const parsed = notation.parseText(text);
   ok(parsed.ok, '文本棋谱可解析', parsed.error);
   if (parsed.ok) {
@@ -197,6 +220,13 @@ section('notation');
   const rec = notation.toJSONRecord(sim);
   const fromRec = notation.fromJSONRecord(rec);
   eq(fromRec.moves.length, sim.moves.length, 'JSON 记录还原手数一致');
+  eq(fromRec.rulesVersion, 2, 'JSON 记录保留 rulesVersion');
+
+  // 旧棋谱（无 Rules 行）按 v1 解析
+  const legacyText = text.split('\n').filter((l) => l.trim().indexOf('Rules:') !== 0).join('\n');
+  const legacy = notation.parseText(legacyText);
+  ok(legacy.ok, '旧格式棋谱仍可解析');
+  eq(legacy.state.rulesVersion, 1, '无 Rules 行的旧棋谱按 v1 处理');
 
   const summary = notation.summarize(sim);
   eq(summary.moves, sim.moves.length, '摘要手数正确');

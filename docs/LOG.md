@@ -92,18 +92,34 @@
 - 提交：本次提交
 - 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
 
-### OP-013 M11 旋转/翻转可用性修复与反馈优化
+### OP-012 M10 对齐官方游戏规则（缺陷修复）
 
 - 时间：2026-10-07
-- 背景：用户反馈"旋转和翻转功能是不是没做"。核查后确认引擎与 UI 均已实现，但**按钮始终灰显**：
-  `selectPiece()` 只刷新了托盘与棋盘，没有重新计算 `#btnRotate` / `#btnFlip` 的 `disabled` 状态
-  （该状态在上一次整帧渲染时按"未选中棋子"写入 true），因此鼠标点击按钮无效，只有键盘 R / F 能触发。
-- 操作（分支 feat/rotation-feedback）：
-  - `js/ui.js`：`selectPiece()` 改为整帧 `renderGame()` 刷新（修复按钮禁用状态）；新增 `renderSelectedPreview()` 与 `pulsePreview()`
-  - `index.html` / `styles.css`：新增「选中棋子放大预览」面板（88px 画布 + 棋子名 + `R角度 · M镜像` 标签 + 旋转/翻转脉冲动画）
-  - `tests/browser-smoke.js`：新增 7 项端到端断言（朝向标签 R000→R090、M1 标记、落子记录 `rot=90` / `mirror=1`、旋转后形状覆盖 T1、翻转后覆盖 T20），并新增截图 03b-rotate-preview.png
-  - 文档：README 功能列表补充；IMPLEMENTATION 测试计数更新为 32/32
-- 验证：`node tests/browser-smoke.js` **32/32 通过**（修复前该项为 26/32，7 项新断言中有 6 项失败 → 修复后全绿）
-- 提交：见 PR（分支 feat/rotation-feedback）
-- 遗留：无
+- 背景：用户指出实现逻辑有问题。核对官方规则后确认——v1 把邻接规则写反了：官方要求「同色必须角对角相接、禁止同色边贴边；异色允许边贴边、禁止角对角接触」，而旧实现是「同色必须边相邻、禁止异色边相邻」。
+- 操作（分支 fix/official-adjacency-rules）：
+  - `js/rules.js`：新增 `RULES_VERSION=2`、`DIAGS`，把原实现保留为 `canPlaceV1`，新增官方规则 `canPlaceV2`，`canPlace()` 按 `state.rulesVersion` 分派；共用前置校验 `commonPlacement()`（越界/重叠/首子覆盖角）
+  - `js/game.js`：`createGame` 默认写入 `rulesVersion: 2`；`rebuild/fromJSON` 对缺省值按 **v1** 处理（兼容旧存档）；`toJSON` 输出该字段
+  - `js/notation.js`：文本棋谱新增 `Rules: vN` 行并可解析；缺省按 v1
+  - `js/i18n.js` / `js/ui.js` / `js/storage.js`：新增错误文案（`same_color_edge` / `opposite_corner` / `no_own_corner`）、对局横幅增加规则提示、历史与回放页标注「旧规则对局（v1）」
+  - `tests/run-all.js`：重写规则用例为官方邻接矩阵（同色角/边、异色角/边四种组合），新增 v1 兼容与双版本整局模拟、棋谱版本往返
+  - 文档：新增 `docs/RULES.md`（官方规则 + 常见误区 + 实现对照 + 版本策略），更新 `docs/DESIGN.md`（规则章节拆为 v2 官方 / v1 兼容）、`README.md`、`docs/IMPLEMENTATION.md`
+- 验证：`node tests/run-all.js` **556/556**；服务端 `--selftest` OK；`tests/browser-smoke.js` **25/25**；`tests/browser-lan-smoke.js` **18/18**
+- 提交：见 PR（分支 fix/official-adjacency-rules）
+- 遗留：平局细则（官方部分版本为"先出完者优先"）未实现，已在 docs/RULES.md 列为已知差异
+### OP-011 M9 分支规则与 PR 流程
+
+- 时间：2026-10-07
+- 操作（全部在临时分支 chore/branch-rules 上完成，遵循新规则）：
+  - 新增 `.githooks/pre-commit`（禁止在 main/master 提交）与 `.githooks/pre-push`（禁止推送 main/master）
+  - 新增 `.gitattributes`（hook/脚本强制 LF 检出，避免 Windows 下 sh 解释器报错）
+  - 新增 `scripts/new-branch.sh` / `scripts/new-branch.cmd`（一键创建临时分支）
+  - 新增 `docs/BRANCH-RULES.md`（规则说明 + GitHub 规则集/自动删除分支的网页设置步骤 + 标准流程）
+  - 更新 `.github/pull_request_template.md`（增加"合入后立即删除源分支"固定勾选项）
+  - 更新 `AGENTS.md` 至 v1.2（新增第 9 节：分支与合入规则，强制项）
+  - 本地执行 `git config core.hooksPath .githooks` 并验证
+- 验证：
+  - `BK_BRANCH_OVERRIDE=main .githooks/pre-commit` → 拦截（exit 1）；`chore/branch-rules` → 放行（exit 0）
+  - `pre-push` 模拟：`refs/heads/main` → 拦截（exit 1）；`refs/heads/fix/x` → 放行（exit 0）
+- 提交：见 PR 内的提交（分支 chore/branch-rules）
+- 遗留：GitHub 网页侧两项需仓库所有者点击完成 —— ① Settings → Rules → protect-main 规则集；② Settings → General → Automatically delete head branches（步骤见 docs/BRANCH-RULES.md 第 3 节）
 
