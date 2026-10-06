@@ -13,7 +13,7 @@
     { "id": "M4", "title": "历史与回放", "status": "done", "commit": "d5227b6", "deliverables": ["js/replay.js"] },
     { "id": "M5", "title": "棋谱导入导出", "status": "done", "commit": "d5227b6", "deliverables": ["js/notation.js"] },
     { "id": "M6", "title": "局域网联机", "status": "done", "commit": "d5227b6", "deliverables": ["server/lan-server.js", "js/net.js", "launcher.cmd", "scripts/start-lan.sh"] },
-    { "id": "M7", "title": "打磨与文档", "status": "done", "commit": "docs-op-007", "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "AGENTS.md"] },
+    { "id": "M7", "title": "打磨与文档", "status": "done", "commit": "b890501", "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "AGENTS.md"] },
     { "id": "M8", "title": "GitHub 远程仓库", "status": "blocked", "commit": null, "deliverables": ["github.com/<user>/blokus"], "blockedReason": "等待用户提供一次性 GitHub 授权（gh 未安装/无令牌/沙箱网络受限）" }
   ]
 }
