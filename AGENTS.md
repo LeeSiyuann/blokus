@@ -121,3 +121,9 @@ node tests/browser-lan-smoke.js  # 局域网端到端（两个页面同房对局
 - 推送需要用户**一次性授权**（本机未安装 gh，且无 GITHUB_TOKEN；沙箱网络受限）。
 - **只有在用户明确提示时才创建 PR/MR**；创建后必须：① 用 `code_review` MCP 读取检查结果；② 用 `codex_app` MCP 附加 PR 工件；③ 把链接汇报给用户，由用户合入。
 
+### M8 阻塞原因（2026-10-07 实测）
+
+- GitHub 插件（`plugin_connector_1p_1a69035c238881919c4190932b2df699`，connector `connector_76869538009648d5b282a4bb21c3d157`）是 **OpenAI 托管的 GitHub App 连接器**，不是本地 gh CLI。
+- `create_repository` 返回 `403 Resource not accessible by integration`：该 App 未申请/未获 `Administration` 权限，**GitHub App 的权限集由 App 提供方固定，用户无法自行勾选增补**，重新授权只能调整"可访问哪些仓库"。
+- 因此 M8 的可行路径只剩：① 用户手工创建空仓库 `blokus`（不勾选任何初始化文件）→ 本地 `git push -u origin main`（Git Credential Manager 弹窗授权）；或 ② 用户提供短期 PAT 由 agent 建仓并推送；或 ③ 由连接器 `push_files` 上传（会把历史压平为一个提交，仅在①不可行时使用）。
+

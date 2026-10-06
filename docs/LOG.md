@@ -73,3 +73,12 @@
 - 提交：0cec778
 - 遗留：M8 需用户二选一（网页建空仓库后我推送 / 为插件补授权后我建仓）
 
+### OP-009 确认 GitHub 连接器权限边界
+
+- 时间：2026-10-07
+- 操作：检查本机插件清单（.codex-plugin/plugin.json、.app.json、remote-plugin-install.json）确认 GitHub 插件为 OpenAI 托管的连接器型 GitHub App；确认系统级 git credential.helper=manager 可用
+- 结论：连接器无 `Administration` 权限且用户无法自行增补 → 重新授权不能获得建仓能力；推荐改为"用户建空仓库 + 本地 git push（GCM 授权）"或"短期 PAT"
+- 验证：create_repository 403 记录 + 插件清单文件内容
+- 提交：本次提交
+- 遗留：M8 待用户执行建仓（或提供 PAT）
+
