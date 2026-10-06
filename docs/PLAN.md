@@ -50,7 +50,7 @@
 | M5 | 棋谱导入导出 | js/notation.js | BKS1 文本 + JSON 可导出、复制、下载、再导入还原 | ✅ 完成 |
 | M6 | 局域网联机 | server/lan-server.js、js/net.js、scripts/ 启动脚本 | 两台设备同房对局；服务端校验轮次与合法性；断线可重连 | ✅ 完成（端到端 18 项） |
 | M7 | 打磨与文档 | README.md、docs/IMPLEMENTATION.md、docs/LOG.md | 全量测试通过；文档与实现一致；日志完整 | ✅ 完成 |
-| M8 | 远程仓库 | GitHub blokus 仓库 | 代码推送成功（需用户提供一次授权） | ⏳ 等待用户授权 |
+| M8 | 远程仓库 | GitHub blokus 仓库 | 代码推送成功 | ✅ 完成（github.com/LeeSiyuann/blokus） |
 
 ## 4. 风险与对策
 

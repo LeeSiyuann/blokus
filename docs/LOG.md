@@ -82,3 +82,13 @@
 - 提交：本次提交
 - 遗留：M8 待用户执行建仓（或提供 PAT）
 
+### OP-010 M8 完成：推送到 GitHub
+
+- 时间：2026-10-07
+- 操作：用户在 GitHub 手工创建空仓库 LeeSiyuann/blokus；本机执行 `git push -u origin main`（Git Credential Manager 浏览器授权一次）；随后用 GitHub MCP 校验远端
+- 验证：
+  - `list_commits` 返回 9 条提交，与本地一致（HEAD=0260932）
+  - `get_file_contents` 根目录包含 .github、.gitignore、AGENTS.md、README.md、docs、index.html、js、launcher.cmd、logs、package.json、scripts、server、styles.css、tests
+- 提交：本次提交
+- 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
+

@@ -125,5 +125,12 @@ node tests/browser-lan-smoke.js  # 局域网端到端（两个页面同房对局
 
 - GitHub 插件（`plugin_connector_1p_1a69035c238881919c4190932b2df699`，connector `connector_76869538009648d5b282a4bb21c3d157`）是 **OpenAI 托管的 GitHub App 连接器**，不是本地 gh CLI。
 - `create_repository` 返回 `403 Resource not accessible by integration`：该 App 未申请/未获 `Administration` 权限，**GitHub App 的权限集由 App 提供方固定，用户无法自行勾选增补**，重新授权只能调整"可访问哪些仓库"。
-- 因此 M8 的可行路径只剩：① 用户手工创建空仓库 `blokus`（不勾选任何初始化文件）→ 本地 `git push -u origin main`（Git Credential Manager 弹窗授权）；或 ② 用户提供短期 PAT 由 agent 建仓并推送；或 ③ 由连接器 `push_files` 上传（会把历史压平为一个提交，仅在①不可行时使用）。
+- 因此 M8 的可行路径：① 用户手工创建空仓库 `blokus`（不勾选任何初始化文件）→ 本地 `git push -u origin main`（Git Credential Manager 弹窗授权）；或 ② 用户提供短期 PAT 由 agent 建仓并推送；或 ③ 由连接器 `push_files` 上传（会把历史压平为一个提交，仅在①不可行时使用）。
+
+### M8 完成记录（2026-10-07）
+
+- 用户手工创建空仓库；本机执行 `git push -u origin main`（GCM 浏览器授权一次）→ 9 个提交全部推送成功。
+- 远端地址：https://github.com/LeeSiyuann/blokus
+- 校验：`get_file_contents` 根目录返回 .github/.gitignore/AGENTS.md/README.md/docs/index.html/js/launcher.cmd/logs/package.json/scripts/server/styles.css/tests；`list_commits` 返回 9 条与本地一致。
+- 后续推送免密（凭据已由 Git Credential Manager 缓存）；**PR 仍需用户明确提示后再创建**。
 
