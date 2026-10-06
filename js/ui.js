@@ -169,8 +169,7 @@
     app.rot = 0;
     app.mirror = 0;
     BKNS.Sound.play('select');
-    renderTray();
-    renderBoard();
+    renderGame(); // 必须整帧刷新：否则「旋转 / 翻转」按钮的 disabled 状态会停留在未选中时的状态
   }
 
   function rotateSelected() {
@@ -179,6 +178,7 @@
     BKNS.Sound.play('rotate');
     renderTray();
     renderBoard();
+    pulsePreview();
   }
 
   function flipSelected() {
@@ -187,6 +187,16 @@
     BKNS.Sound.play('rotate');
     renderTray();
     renderBoard();
+    pulsePreview();
+  }
+
+  /** 旋转 / 翻转后的轻量视觉反馈 */
+  function pulsePreview() {
+    const wrap = $('#selPreviewWrap');
+    if (!wrap || !app.selected) return;
+    wrap.classList.remove('pulse');
+    void wrap.offsetWidth;
+    wrap.classList.add('pulse');
   }
 
   function tryPlaceAt(r, c) {
@@ -316,6 +326,7 @@
       e.className = 'tray-empty';
       e.textContent = t('game.gameOver');
       host.appendChild(e);
+      renderSelectedPreview(colorId);
       return;
     }
     for (const id of remaining) {
@@ -330,6 +341,28 @@
       host.appendChild(btn);
       requestAnimationFrame(() => BKNS.drawPieceThumb(canvas, id, colorId, app.selected === id ? app.rot : 0, app.selected === id ? app.mirror : 0));
     }
+    renderSelectedPreview(colorId);
+  }
+
+  /** 选中棋子的放大预览 + 朝向标签（R 角度 / M 镜像） */
+  function renderSelectedPreview(colorId) {
+    const wrap = $('#selPreviewWrap');
+    const canvas = $('#selPreview');
+    if (!wrap || !canvas) return;
+    const name = $('#selName');
+    const orient = $('#selOrient');
+    if (!app.selected) {
+      name.textContent = '—';
+      orient.textContent = t('game.noSelection');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round((canvas.clientWidth || 88) * dpr));
+      canvas.height = Math.max(1, Math.round((canvas.clientHeight || 88) * dpr));
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    name.textContent = app.selected;
+    orient.textContent = 'R' + String(app.rot).padStart(3, '0') + ' · M' + app.mirror;
+    BKNS.drawPieceThumb(canvas, app.selected, colorId, app.rot, app.mirror);
   }
 
   function showGameOver() {

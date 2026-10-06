@@ -191,6 +191,44 @@ async function main() {
     await sleep(150);
     check((await evalJs("document.querySelector('#playersPanel').textContent")).indexOf('21 ') >= 0, '非法落子未改变黄方棋子数');
 
+    // ===== 旋转 / 翻转 端到端验证 =====
+    const cellPoint = (row, col) => evalJs(`(() => {
+      const c = document.querySelector('#boardCanvas');
+      const r = c.getBoundingClientRect();
+      const size = Math.min(r.width, r.height);
+      const pad = Math.round(size * 0.045) + 10;
+      const cell = (size - pad * 2) / 20;
+      return { x: r.left + pad + cell * (${col} + 0.5), y: r.top + pad + cell * (${row} + 0.5) };
+    })()`);
+    const moveOf = (pieceId) => evalJs(
+      "(() => { const rec = BK.loadRecord(BK.getCurrent()); if (!rec || !rec.game) return null; " +
+      "const m = rec.game.moves.find(x => x.piece === " + JSON.stringify(pieceId) + "); " +
+      "return m ? { rot: m.rot, mirror: m.mirror, cells: m.cells } : null; })()");
+
+    // 黄方：L4 旋转 90° 后落在右上角 T1
+    await evalJs("[...document.querySelectorAll('#tray .tray-piece')].find(b => b.dataset.piece === 'L4').click()");
+    check((await evalJs("document.querySelector('#selOrient').textContent")).indexOf('R000') === 0, '选中后朝向标签显示 R000');
+    await evalJs("document.querySelector('#btnRotate').click()");
+    check((await evalJs("document.querySelector('#selOrient').textContent")).indexOf('R090') === 0, '点击「旋转 R」后朝向标签显示 R090');
+    await shot('03b-rotate-preview.png');
+    const pRot = await cellPoint(0, 17);
+    await clickAt(pRot.x, pRot.y);
+    await sleep(250);
+    const rotMove = await moveOf('L4');
+    check(!!rotMove && rotMove.rot === 90, '落子记录写入 R090');
+    check(!!rotMove && rotMove.cells.some((c) => c[0] === 0 && c[1] === 19), '旋转后的形状覆盖右上角 T1');
+
+    // 红方：S4 翻转后落在右下角 T20
+    await evalJs("[...document.querySelectorAll('#tray .tray-piece')].find(b => b.dataset.piece === 'S4').click()");
+    await evalJs("document.querySelector('#btnFlip').click()");
+    check((await evalJs("document.querySelector('#selOrient').textContent")).indexOf('M1') > 0, '点击「翻转 F」后镜像标记为 M1');
+    const pFlip = await cellPoint(18, 17);
+    await clickAt(pFlip.x, pFlip.y);
+    await sleep(250);
+    const flipMove = await moveOf('S4');
+    check(!!flipMove && flipMove.mirror === 1, '落子记录写入 M1');
+    check(!!flipMove && flipMove.cells.some((c) => c[0] === 19 && c[1] === 19), '翻转后的形状覆盖右下角 T20');
+
     // 导出
     await evalJs("document.querySelector('#btnExport').click()");
     await sleep(150);
