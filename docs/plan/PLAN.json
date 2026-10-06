@@ -16,6 +16,7 @@
     { "id": "M7", "title": "打磨与文档", "status": "done", "commit": "b890501", "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "AGENTS.md"] },
     { "id": "M8", "title": "GitHub 远程仓库", "status": "done", "commit": "0260932", "deliverables": ["https://github.com/LeeSiyuann/blokus"], "note": "用户创建空仓库后本地 git push 完成，9 个提交全部同步（Git Credential Manager 浏览器授权）" },
     { "id": "M10", "title": "对齐官方游戏规则", "status": "doing", "commit": null, "deliverables": ["js/rules.js (canPlaceV1/V2)", "js/game.js (rulesVersion)", "js/notation.js (Rules: vN)", "tests/run-all.js", "docs/RULES.md", "docs/DESIGN.md"], "note": "v2 = 官方规则（新对局默认）；v1 = 旧变体，仅用于回放历史对局" }
+    { "id": "M9", "title": "分支规则与 PR 流程", "status": "doing", "commit": null, "deliverables": [".githooks/pre-commit", ".githooks/pre-push", ".gitattributes", "docs/BRANCH-RULES.md", "scripts/new-branch.sh", "scripts/new-branch.cmd", ".github/pull_request_template.md"], "note": "GitHub 侧规则集与自动删除分支需用户在网页开启（连接器无 Administration 权限）" }
   ]
 }
 

@@ -1,0 +1,5 @@
+# 保证 shell / hook 脚本在任何平台都以 LF 检出（Windows 下 CRLF 会导致 hook 解释器报错）
+*.sh text eol=lf
+.githooks/* text eol=lf
+*.cmd text eol=crlf
+
