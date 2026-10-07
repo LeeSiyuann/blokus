@@ -114,5 +114,5 @@
 - 变更文件：index.html、js/game.js、rules.js、notation.js、storage.js、replay.js、net.js、ui.js、i18n.js；server/lan-server.js；scripts/start-lan.js、start-lan.sh、launcher.cmd、package.json；tests/reliability.js、server-reliability.js、run-all.js、browser-smoke.js、browser-lan-smoke.js；README.md、AGENTS.md、docs/DESIGN.md、IMPLEMENTATION.md、AI-EXTENSION.md、REQUIREMENTS.md、PLAN.md、plan/PLAN.json、LOG.md；logs/2026-10-08.md。
 - 验证：最终 npm run test:all → 单元 673/673，服务自检 OK，服务可靠性 22/22，单机浏览器 44/44，双页面联机 28/28；启动辅助 --selftest OK。18 个 JavaScript 文件语法检查与 git diff --check 通过；浏览器经批准在沙箱外启动。
 - 界面证据：output/playwright/08-history-reliability.png、12-lan-recovery.png；已查看英文历史/损坏导入提示、简化模式和联网离席状态，排版清晰；截图不入库。
-- 提交：待本地实现提交；收尾文档提交将回填哈希并置 M10=done。
+- 提交：8fa28c9（引擎/数据/联机/界面、测试及文档）；收尾文档提交回填此哈希并置 M10=done。
 - 遗留：真实多设备/防火墙、多网卡与 macOS/Linux/Firefox 实测尚未完成；手机/读屏、枚举性能、UI 拆分及服务磁盘故障事务可继续改善；AI 对手与官方双人/三人变体不属于当前需求。旧局只回放，联机身份不随公开备份迁移；未 push、未创建 PR。

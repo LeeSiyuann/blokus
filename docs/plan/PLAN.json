@@ -129,8 +129,8 @@
     {
       "id": "M10",
       "title": "补齐R1–R12正确性、数据可靠性与联机生命周期",
-      "status": "doing",
-      "commit": null,
+      "status": "done",
+      "commit": "8fa28c9",
       "deliverables": [
         "js",
         "server",
