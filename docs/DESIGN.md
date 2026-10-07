@@ -1,266 +1,167 @@
 # 设计文档（DESIGN）
 
-> 版本：v1.0 ｜ 日期：2026-10-06 ｜ 对应实现：js/*、server/lan-server.js
+> 版本：v1.1 ｜ 日期：2026-10-08 ｜ 本文描述实际实现；AI 预留方案见 AI-EXTENSION.md
 
-## 1. 总体架构
+## 1. 架构与模块
+
+原生 HTML/CSS、Canvas 2D、传统 script；单机兼容 file://。pieces/rules/game/notation 同时导出 window.BK 与 module.exports，浏览器与服务端复用同一规则和状态机。
 
 ```
-浏览器（单页三视图） index.html
-   ├─ Launcher 视图（启动器）：单机 / 局域网 / 继续 / 历史 / 导入 / 设置
-   ├─ Game 视图（对局）：Canvas 棋盘 + 棋子托盘 + 计分板 + 控制条
-   └─ Replay 视图（回放）：棋盘 + 步进/播放/跳转控件
-
-ui.js ── 视图路由与事件总线
-   ├─ render.js   画布渲染（棋盘、预览、高亮、最近一手）
-   ├─ game.js     对局状态机（唯一状态源，纯逻辑，双端复用）
-   ├─ rules.js    规则判定 / 落点枚举 / 计分
-   ├─ pieces.js   21 种棋子 + 朝向集合
-   ├─ notation.js 棋谱编解码（BKS1 / JSON）
-   ├─ storage.js  localStorage 持久化
-   ├─ replay.js   回放播放器（由 moves[] 重建任意步状态）
-   ├─ i18n.js     中英文词条与切换
-   ├─ sound.js    WebAudio 合成音效
-   └─ net.js      局域网客户端（REST 提交 + SSE 订阅）
-
-server/lan-server.js（Node 内置模块，零依赖）
-   ├─ 静态资源托管（/、/js/*、/styles.css）
-   ├─ 房间管理：创建 / 加入 / 重连（playerToken）/ 过期回收
-   ├─ 状态广播：GET /api/rooms/:id/stream（SSE：state / move / end / presence）
-   └─ 裁判：轮次校验 + 共享 rules.js 复核 + 记录 moves[]
+index.html → ui.js（启动器 / 对局 / 历史 / 回放）
+                ├─ render.js / replay.js / net.js / storage.js
+                ├─ i18n.js / sound.js
+                └─ notation.js / game.js → rules.js → pieces.js
+server/lan-server.js → game.js / notation.js（REST + SSE + 房间存盘）
+scripts/start-lan.js → 服务 main()（地址发现 / 打开浏览器）
 ```
 
-## 2. 模块职责与依赖方向
+| 模块 | 主要公开接口（实际名称） |
+| --- | --- |
+| pieces | PIECES、ALL_PIECE_IDS、orientCells、cellsFor、generateOrientations |
+| rules | canPlace、legalPlacements、hasAnyMove、mustPass、allLegalActions、scoreFor、computeResult |
+| game | createGame、applyAction、undo、rebuild、replayTo、toJSON、fromJSON、turnInfo |
+| notation | toText、parseText、toJSONRecord、fromJSONRecord、summarize |
+| storage | getSettings/setSettings、saveRecord/loadRecord、listGames、deleteGame/restoreGame、getCurrent/setCurrent、usageBytes、exportBackup/importBackup、getConnection/setConnection |
+| render | Renderer（setState、draw、toCell）、drawPieceThumb、COLORS |
+| replay | ReplayPlayer（seek、next、prev、first、last、play、pause、setSpeed、dispose） |
+| i18n / sound | t/setLang/getLang/applyI18n；BK.Sound.play/setEnabled/isEnabled/unlock |
+| net | NetClient（createRoom/joinRoom/start/restart/leave/kick/move/pass/record/connect/reset） |
+| ui | 私有 app 状态和事件绑定；没有公开 BK.App 调度接口 |
+| server | createServer({storePath,shareHosts})、main(options)、rooms；CLI --port/--host/--advertise/--selftest |
 
-依赖只能自上而下：ui.js → (render / replay / net / storage) → game.js → rules.js → pieces.js。
-notation.js、i18n.js、sound.js 为工具层，可被任意层调用，但不反向依赖 UI。
+服务核心只使用 Node 内置 http/crypto/fs/path（URL 使用全局构造器）；os/child_process 只在启动辅助中使用。无运行时 npm 依赖、打包器或二进制资源。
 
-| 文件 | 职责 | 关键导出 |
+## 2. 领域与数据模型
+
+坐标均为 [row,col]，行向下、列向右，内部 0–19；记谱列 A–T、行 1–20。
+每色 21 枚棋子共 89 格，朝向为旋转 0/90/180/270 × 镜像 0/1，枚举时去除重复形状。
+
+| 全局颜色编号 | id | 起始角 |
 | --- | --- | --- |
-| js/pieces.js | 21 种棋子的标准形状、朝向枚举、格子变换 | PIECES、ORIENTATIONS、orientCells() |
-| js/rules.js | 纯规则判定：可放性、首子、邻接约束、pass 判断、计分 | canPlace()、hasAnyMove()、legalAnchors()、score() |
-| js/game.js | 对局状态机：创建、落子、pass、悔棋、结束、序列化 | createGame()、applyMove()、undo()、toJSON()、fromJSON() |
-| js/notation.js | BKS1 文本棋谱与 JSON 编解码，坐标/朝向转换 | toText()、parseText()、toJSONRecord()、fromJSONRecord() |
-| js/storage.js | 设置、当前对局、历史索引、对局正文读写与容量管理 | saveGame()、loadGame()、listGames()、setSetting() |
-| js/render.js | Canvas 绘制：棋盘、棋子、预览、最近一步、提示 | Renderer（draw()、setState()、hitTest()） |
-| js/replay.js | 回放状态机：步进、播放、跳转、速度 | ReplayPlayer |
-| js/i18n.js | 词条表 + 切换 + DOM 扫描 | t()、setLang()、applyI18n() |
-| js/sound.js | WebAudio 合成音效与开关 | Sound.play()、Sound.setEnabled() |
-| js/net.js | 局域网客户端：建房/加入、提交、SSE 订阅、重连 | NetClient |
-| js/ui.js | 视图路由、事件绑定、对局驱动、启动器逻辑 | App（start()、showView()） |
-| server/lan-server.js | 静态托管、房间、裁判与广播 | CLI：--port、--open、--selftest |
+| 0 | blue | [0,0] / A1 |
+| 1 | yellow | [0,19] / T1 |
+| 2 | red | [19,19] / T20 |
+| 3 | green | [19,0] / A20 |
 
-## 3. 领域模型
+2 人 seatIds=[0,2]、3 人 [0,1,3]、4 人 [0,1,2,3]。board 和 moves.player 使用本局玩家下标，不能把全局颜色编号当玩家下标。
+seatIds 支持显式唯一颜色映射并保存到棋谱。联机人数上限与实际开局人数不同：实际加入人数至少 2 人，决定本局 seatIds 和模式标注。
 
-### 3.1 玩家与颜色
+| GameState 字段 | 类型与语义 |
+| --- | --- |
+| version / rulesVersion | JSON 格式 1；规则 2（缺省导入按旧规则 1） |
+| id / mode / status | 安全字符串 id；hotseat/lan；playing/finished |
+| createdAt | ISO 日期字符串 |
+| startedAt/updatedAt/turnStartedAt/finishedAt | 毫秒时间戳，finishedAt 进行中为 null |
+| seatCount/seatIds/players | 2–4 人；全局颜色编号数组；id/name/controller/ai/corner/passed/finished |
+| board | 运行时 Int8Array(400)，JSON 为 20×20 数组；-1 空格，其余为本局玩家下标 |
+| remaining | 按本局玩家下标排列的棋子 id 数组 |
+| turn/consecutivePasses | 当前玩家下标、连续退出动作计数 |
+| moves | n/player/type/piece/anchor/rot/mirror/cells/ts/elapsedMs；type 为 place/pass/resign |
+| result | scores/bonus/remainingSquares/ ranking/winners/moveCount/durationMs |
+| lang/sound/server | 对局附带设置；server 可存 roomId/seat 等元数据，不包含 token |
 
-| 顺序 | id | 颜色 | 起始角（列,行） | 说明 |
-| --- | --- | --- | --- | --- |
-| 0 | blue | 蓝 | A1（左上） | 默认第一名 |
-| 1 | yellow | 黄 | T1（右上） | |
-| 2 | red | 红 | T20（右下） | |
-| 3 | green | 绿 | A20（左下） | |
+createGame 生成新局；applyAction 验证后原地修改，并返回 {ok,move} 或 {ok:false,code}。
+rebuild/replayTo/fromJSON 从动作顺序重建派生状态。非法动作、错误手号/玩家抛错，不跳过；fromJSON 同时检查提供的 board/remaining/status/turn 是否匹配。
+结果与棋子占格由引擎重新计算，不信任外部提供的分数或 cells。JSON 导入保留逐步 ts/elapsedMs 及对局起止时间，避免重新导入改变耗时。
 
-坐标系：列 A–T 从左到右（0–19），行 1–20 从上到下（0–19），单元格记法 A1…T20。
-2 人简化模式采用蓝（A1）对红（T20）；3 人简化模式采用蓝、黄、绿；4 人标准模式使用全部颜色。
-简化模式每人一色、棋盘仍为 20×20，使用标准落子和计分约束，不实现官方双人两色/三人共享色变体。
-局域网座位按加入顺序占位，房主选择的是人数上限；实际开局人数为已加入人数（至少 2 人）。模式标签按实际对局人数确定。
+## 3. 规则与模式
 
-### 3.2 棋子集（21 块，每色一套）
+1. 首子须覆盖自己的起始角；所有落子不得越界或重叠。
+2. 后续至少与同色棋子角接触，不能与同色边接触；异色边/角接触允许。
+3. 有合法落子时拒绝 PASS；无合法落子时 PASS 永久退出后续轮次。出完棋子也退出轮次；全部退出则终局。
+4. 剩余每格 -1 分，全部出完 +15，最后一枚为 I1 则总计 +20。
+5. ranking 按得分排序，winners 包含全部并列最高分；UI 并列名次一致。
+6. 单机可撤销最后一步；联网不提供悔棋 API。resign 用于管理离席、跳过合法落子检查并永久退出，不作为正常 PASS。
 
-单格 1、二连 1、三连 2、四连 5、五连 12，合计 21 块 / 89 格。
-标识采用标准多联骨牌命名：I1 I2 I3 L3 I4 O4 T4 L4 S4 F5 I5 L5 N5 P5 T5 U5 V5 W5 X5 Y5 Z5。
-每块预计算旋转 0/90/180/270 × 镜像 0/1 的朝向并去重，供 UI 轮换与服务端校验。
+4 人为标准模式；2/3 人为每人一色、20×20 的简化模式，保留标准落子和计分，未实现官方双人两色/三人共享色变体。
+规则来源：https://service.mattel.com/instruction_sheets/R1983-0920.pdf。
+旧版 1 保留旧解释器与旧计分，仅在 UI 回放/导出；新局和 LAN 使用规则 2，未知版本拒绝。
 
-### 3.3 GameState（JSON）
+## 4. 棋谱协议
 
-```json
-{
-  "version": 1,
-  "rulesVersion": 2,
-  "id": "g_20261006_ab12cd",
-  "createdAt": "2026-10-06T12:00:00.000Z",
-  "updatedAt": "2026-10-06T12:30:00.000Z",
-  "status": "playing",
-  "mode": "hotseat",
-  "lang": "zh",
-  "sound": true,
-  "players": [
-    { "id": "blue", "name": "玩家1", "controller": "human", "corner": [0, 0], "passed": false, "finished": false }
-  ],
-  "turn": 0,
-  "consecutivePasses": 0,
-  "board": [[-1]],
-  "remaining": [["I1", "I2"], []],
-  "moves": [
-    {
-      "n": 1, "player": 0, "type": "place",
-      "piece": "F5", "anchor": [4, 4],
-      "rot": 90, "mirror": 0,
-      "cells": [[5, 4], [6, 4]],
-      "ts": 1759700000000, "elapsedMs": 12000
-    }
-  ],
-  "result": null,
-  "server": null
-}
-```
+### BKS1 文本
 
-说明：status = playing | finished；mode = hotseat | lan；controller = human | ai | remote；
-moves[].type = place | pass；board 为 20×20 扁平化后序列化的二维数组，值 = 玩家下标或 -1；
-server 仅 lan 模式使用，形如 { roomId, seat, host }。
-
-board 与 remaining 属于可重建派生数据：导入/回放时先由 moves[] 重放生成，保证一致性；
-存档时写入派生快照以加速加载并做一致性校验（不一致时以 moves[] 为准并记录告警）。
-
-## 4. 规则规格（判定顺序）
-
-1. 越界或重叠 → 非法。
-2. 首子：必须覆盖自己起始角单元格（corner）；允许接触异色棋子。
-3. 后续子：
-   - 必须至少与本方已有棋子角相邻（对角）；
-   - 不得与任何本方已有棋子边相邻（即使同时角接触也非法）；
-   - 异色棋子之间允许边接触或角接触。
-4. 无合法着法时可 PASS 并退出后续轮次；全部玩家均已 PASS 或出完棋子时终局。
-5. 计分：score = -(剩余格数)；出完全部 21 块 +15；若最后放置的是单格 I1，额外 +5（共 +20）。
-6. 悔棋（仅本地模式）：撤销最后一步并回滚状态；联网模式默认禁用。
-
-实现要点：rules.js 使用 20×20 扁平数组加速邻接检查；legalPlacements() 遍历去重朝向与棋盘锚点，通过 canPlace() 判定；候选角点枚举属于后续性能优化。
-
-规则依据：https://service.mattel.com/instruction_sheets/R1983-0920.pdf。
-
-### 4.1 旧棋谱隔离
-
-GameState.rulesVersion 独立于 JSON 格式 version：新局默认为 2；导入或重建时缺省按旧版 1 解释；未知版本拒绝。
-版本 1 仅用于保留历史回放：原同色边接触、禁止异色边接触和反向奖励均保留，不用于新单机或联机局。
-UI 将旧记录的继续/历史/导入入口统一转为只读回放；导出明确写回规则版本。离开自动回放时暂停，隐藏回放不再写入对局状态。
-历史索引也记录 rulesVersion。2/3/4 人标签在设置、对局、历史和回放显示并支持中英文切换。
-
-## 5. 记谱规格（BKS1）
-
-### 5.1 文本格式
-
-```
+```text
 BKS1
 Rules: 2
-Game: g_20261006_ab12cd
-Date: 2026-10-06T12:00:00.000Z
+Game: g_example
+Date: 2026-10-08T00:00:00.000Z
 Mode: hotseat
-Players: B=玩家1 Y=玩家2 R=玩家3 G=玩家4
+Seats: 0,2
+Players: B="Alice Smith" R="Bob"
 Moves:
 1. B I1 A1 R000 M0
-2. Y I1 T1 R000 M0
-3. R I1 T20 R000 M0
-4. G I1 A20 R000 M0
-5. B I2 B2 R000 M0
+2. R I1 T20 R000 M0
 ```
 
-字段：序号. 玩家(B/Y/R/G) 棋子名 锚点(列字母+行号) R{旋转角度} M{0/1 镜像}；PASS 表示停一手。
-锚点定义为该棋子**包围盒左上角**（棋子基准网格原点，即最小行、最小列对应的位置；对 S4/Z5/N5 等形状该格可能不被占据）。
-配合 R/M 可唯一复现任意落子，导出与导入使用同一约定（往返一致性由 tests/run-all.js 覆盖）。
+字段为「序号. 颜色 棋子 锚点 R旋转 M镜像」，退出为「3. B PASS」或「3. B RESIGN」。
+锚点是变换后包围盒的左上原点，不一定被棋子占据。昵称用 JSON 字符串引号/转义，兼容旧式无空格昵称。
+Seats 保留颜色映射顺序，缺省时由 Players 的颜色推导；缺省 Rules 按旧规则 1 解释。
+文本仅保证着法/座位/昵称/规则往返，不提供逐步计时；上限 512 KiB，手数不超过 players.length*22。
 
-### 5.2 JSON 格式
+### JSON
 
-{ "format": "bks-json", "version": 1, "game": { ...GameState... }, "moves": [...], "result": {...} }
-JSON 为无损格式：导入后 100% 还原对局与回放。
+单局：{format:'bks-json',version:1,exportedAt,game:GameState}；也兼容裸 GameState。
+备份：{format:'blokus-backup',version:1,exportedAt,settings,current,records:[{record,deletedAt}]}。
+JSON 保存计时和终局信息；派生字段重建验证，未知扩展字段不承诺逐字保留。界面导入先限制约 12 MiB 文本长度，再校验结构与存储上限。
 
-## 6. 局域网协议
+## 5. 局域网协议与生命周期
 
-### 6.1 端点
-
-| 方法 | 路径 | 说明 | 主要参数 |
-| --- | --- | --- | --- |
-| POST | /api/rooms | 创建房间 | { name, lang, seatCount } → { roomId, seat, token } |
-| POST | /api/rooms/:id/join | 加入/重连房间 | { name, seat?, token? } → { seat, token, state } |
-| GET | /api/rooms/:id/stream | SSE 订阅 | ?token=，事件：state / move / end / presence |
-| POST | /api/rooms/:id/move | 提交走子 | { token, type, piece, anchor, rot, mirror, clientSeq } |
-| POST | /api/rooms/:id/pass | 停一手 | { token } |
-| POST | /api/rooms/:id/undo | 悔棋（默认关闭） | { token, targetMove } |
-| POST | /api/rooms/:id/chat | 快捷表情（可选） | { token, emoji } |
-| GET | /api/rooms/:id/record | 导出棋谱 | 返回 BKS1 或 JSON |
-| GET | /api/health | 健康检查 | → { ok, rooms, uptime } |
-
-### 6.2 事件与一致性
-
-- 所有写操作服务端权威：校验 token → 校验轮次 → 用共享 rules.js 复核 → 更新状态 → 广播。
-- 每个 move 携带 clientSeq（客户端单调递增），服务端回显 serverSeq，客户端据此丢弃乱序事件。
-- 断线重连：客户端持 token 调 /join 恢复座位并全量拉取状态（state 事件含完整 GameState）。
-- 房间默认 2 小时无活动回收；server/rooms.json 仅用于可选持久化，默认不写盘。
-
-## 7. 持久化设计
-
-| 键 | 内容 | 说明 |
+| 方法 | 路径 | 参数/返回 |
 | --- | --- | --- |
-| blokus.settings.v1 | { lang, sound, theme, lastSeatCount } | 用户设置 |
-| blokus.current.v1 | 当前进行中对局 id | 启动器"继续"入口 |
-| blokus.index.v1 | 历史索引数组（id/时间/模式/玩家/比分/步数） | 历史列表数据源 |
-| blokus.game.&lt;id&gt; | 完整 GameState JSON | 单局正文 |
-| blokus.migrate | 数据版本 | 迁移标记 |
+| POST | /api/rooms | name/lang/seatCount → roomId/seat/token/playerId/hostSlot/totalSeats |
+| POST | /api/rooms/:id/join | name 或 token；有效 token 恢复原座位，仅大厅允许新身份加入 |
+| POST | /api/rooms/:id/start | token；仅房主，至少两人 |
+| POST | /api/rooms/:id/restart | token；仅房主且已终局，同房新局或回大厅 |
+| POST | /api/rooms/:id/leave | token；释放席位/记录离席 |
+| POST | /api/rooms/:id/kick | token/seat；仅房主，不能踢自己 |
+| POST | /api/rooms/:id/move | token/piece/anchor/rot/mirror/gameId/expectedMoves |
+| POST | /api/rooms/:id/pass | token/gameId/expectedMoves |
+| GET | /api/rooms/:id/stream | ?token=；SSE state/removed，20 秒注释心跳，3 秒重试 |
+| GET | /api/rooms/:id/record | ?token=；默认 JSON，format=text 返回 BKS1 |
+| GET | /api/health | ok/rooms；不含身份 |
 
-容量策略：index 超过 200 局或占用超过 4 MB 时提示导出并清理最旧记录；删除为软删除（标记 deletedAt），可一键恢复。
+state 事件为全量权威状态与大厅/座位数据，按订阅 token 定制 self 下标、online/left；不广播 token。
+removed 表示被踢出、主动离席或房间过期。没有独立 move/end/presence、聊天或联网悔棋端点。
+客户端在一次请求未完成时禁用重复提交，并携带 gameId/expectedMoves；服务端拒绝不匹配、非当前回合和非法动作。协议兼容旧客户端未带版本字段的请求。
+REST 超时为 10 秒；SSE 重连通过原 token 检查席位，全量状态恢复，过期/失效身份返回启动器。
 
-## 8. 界面设计
+大厅离席会整理 slot，并通过 self 更新客户端；对局中保持 slot 与玩家下标稳定，轮到已离席者时通过共享引擎记录 resign。
+房主转移给留下的玩家。至少两位留席可直接再战，仅一位则回大厅；再战会建立新 gameId、按新人数重排颜色。
+CLI 默认用临时文件写入后 rename 保存 server/rooms.json；启动时校验恢复游戏和身份，过期房间不加载。
+createServer 不传 storePath 则为测试内存服务；同一进程仅管理一套 rooms。服务不是数据库，不提供跨进程并发或服务器磁盘故障恢复保证。
+两小时无活动回收，活跃 SSE 心跳维持房间；仅关闭页面不会视为主动弃权。
 
-### 8.1 视图与路由
+静态托管白名单仅为 index.html、styles.css 和 js 下直接脚本，不暴露 .git、文档、服务端源码或 rooms.json。
+鉴权依赖房间 token，仍定位可信局域网；没有公网账户、HTTPS 部署或访问速率限制。
 
-单页三视图：launcher（启动器）→ game（对局）→ replay（回放），由 ui.js 切换 body[data-view] 与 CSS 过渡。
+## 6. 浏览器持久化
 
-### 8.2 启动器（首屏）
+| 键 | 内容 |
+| --- | --- |
+| blokus.settings.v1 | lang/sound/lastSeatCount |
+| blokus.current.v1 | 未完成单机局 id（旧局入口转只读回放） |
+| blokus.index.v1 | id/时间/模式/规则/玩家/比分/步数/status/deletedAt 摘要 |
+| blokus.game.&lt;id&gt; | 单局 bks-json 记录 |
+| blokus.connection.v1 | 最近 LAN 的 roomId/token 等身份，不进入备份 |
+| sessionStorage blokus.connection | 当前标签页身份，刷新时优先 |
 
-```
-┌───────────────────────────────────────────────┐
-│  角斗士棋 BLOKUS            [中文|EN]  🔊 音效 │
-│                                               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
-│  │ 单机热座 │  │ 局域网   │  │ 继续对局 │     │
-│  │ 2–4 人   │  │ 联机大厅 │  │ 上一局   │     │
-│  └──────────┘  └──────────┘  └──────────┘     │
-│  ┌──────────┐  ┌──────────┐                   │
-│  │ 历史对局 │  │ 导入棋谱 │                   │
-│  └──────────┘  └──────────┘                   │
-│  提示：file:// 打开时禁用局域网入口并给出指引  │
-└───────────────────────────────────────────────┘
-```
+写入先快照、计算变更，再一起更新正文/索引/继续指针；失败尝试回滚，向调用者返回错误，不显示虚假保存成功。
+容量以 blokus.* 字符串 UTF-16 字节估算，上限 200 局/4 MiB；可回收最旧终局或回收站记录，正文同步删除，也清理已有孤儿正文。
+未结束未删除对局受保护。删除只标记 deletedAt，回收站可恢复；容量清理是真正删除，备份应在清理前完成。
+备份导入全部校验后按 id 合并，设置一并恢复；超过容量整体拒绝。连接凭据与普通游戏数据分离，迁移棋谱不迁移身份。
 
-### 8.3 对局界面
+## 7. 界面、回放与音效
 
-左侧 Canvas 棋盘（坐标、最近一手高亮、合法/非法预览）；右侧信息面板：当前玩家、计时、四色计分（剩余块与剩余格）、
-棋子托盘（R/F 旋转翻转）、按钮（确认落子、PASS、悔棋、导出、返回）。
+ui 私有 app.state 为对局状态，app.replayState 为回放；离开回放暂停，变速重设定时器，避免隐藏回放改变对局。
+动态历史、终局、联网状态、提示、标题和错误文案均经中英词条；用户自定义昵称保持原文，默认昵称随语言切换。
+人数按钮与 lastSeatCount 同步，切换语言保留用户输入；昵称插入 DOM 使用 textContent 或转义。
+Clipboard API 不可用时使用含目标字符串的临时 textarea；失败有提示。棋盘用 pointer 事件，键盘快捷键避开输入框和弹窗。
+Sound 用 WebAudio 合成，默认开启、首次用户手势解锁。联机按新动作触发落子/PASS，终局按 gameId 去重，在线状态广播不会重复胜利音效。
+存档反馈与网络状态独立展示，掉线/提交中禁用落子，恢复权威状态后清除旧选择。
 
-### 8.4 回放界面
+## 8. 验证与扩展
 
-顶部：对局信息与结果；中部：只读棋盘；底部控件：上一步 / 播放暂停 / 下一步 / 速度（0.5× 1× 2× 4×）/ 步号跳转 / 进度条；
-右侧：当前步详情（玩家、棋子、锚点、旋转、耗时）与实时比分。
-
-## 9. 国际化与音效
-
-- 词条 key 采用 view.section.item 命名；缺失时回退英文并 console.warn（开发期暴露）。
-- 所有可见文案必须走 t() 或 data-i18n，禁止硬编码中文。
-- 音效：place（落子）、invalid（非法）、select（选中）、pass（停手）、win（终局）。
-  使用 WebAudio 合成（振荡器 + 包络），首次用户手势时创建 AudioContext；默认开启，可在启动器与对局内关闭。
-
-## 10. 兼容与安全
-
-- 目标浏览器：Chrome / Edge / Firefox 近两年版本；file:// 下除联网外全部功能可用。
-- 服务端默认监听 0.0.0.0，无账户体系，仅靠房间码 + token；文档明确"仅限可信局域网使用"。
-- 前端对导入的 JSON/文本做结构校验与范围限制（棋盘 20×20、moves 上限 5000），防止恶意数据导致卡死。
-
-## 11. 验证体系（实际实现）
-
-| 层级 | 工具 | 覆盖 |
-| --- | --- | --- |
-| 单元测试 | Node（零依赖）tests/run-all.js | 棋子集/朝向、全部规则分支、随机整局模拟、序列化、悔棋与回放一致性、棋谱往返（含独立规则局面、旧版本回归） |
-| 服务端自检 | node server/lan-server.js --port 18345 --selftest | 建房/加入/开局/轮次强制/合法性/起始角规则 |
-| 浏览器冒烟 | tests/browser-smoke.js（Chrome DevTools Protocol） | 启动器、i18n、音效开关、单机落子、非法落子拦截、存档、导出、历史、继续对局、回放（35 项） |
-| 联机端到端 | tests/browser-lan-smoke.js | 建房/加入/大厅/开局/双向实时同步/轮次锁定（含简化模式标签） |
-
-说明：两个浏览器测试要求本机有 Chrome/Edge，并且需要允许启动浏览器进程；测试截图输出到 output/playwright/（已加入 .gitignore）。
-
-## 12. AI 预留设计（摘要）
-
-详见 docs/AI-EXTENSION.md。核心约定：
-
-- 玩家 controller 字段支持 human | ai | remote，状态机与 UI 不区分具体实现；
-- 引擎暴露 BK.AI 契约：createController(options) 返回 { onTurn(ctx) -> Promise<Action>, onGameEnd(result), dispose() }；
-- 上下文 ctx 为只读视图（棋盘、剩余棋子、历史、合法着法枚举器）；
-- AI 决策走 Action 协议（与人类落子同一校验通道），保证可回放、可导出、可复现（含 seed）。
-
+npm run test:all 包含 673 项单元、服务自检、22 项服务可靠性、44 项单机浏览器、28 项联机浏览器；证据及适用边界见 IMPLEMENTATION 和 REQUIREMENTS。
+合法着法枚举目前遍历朝向与棋盘，角点候选优化、更多设备无障碍/触控验证和 UI 模块拆分属于后续改善。
+AI 可复用 allLegalActions/createGame/applyAction/rebuild；注册表、只读上下文构建、异步调度器尚未实现，R12 验收为设计与参数文档。

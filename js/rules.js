@@ -32,6 +32,10 @@
    * @returns {{ok:boolean, code?:string, cells?:number[][]}}
    */
   function canPlace(state, playerIndex, pieceId, rot, mirror, anchor) {
+    if (!Array.isArray(anchor) || anchor.length !== 2 || !anchor.every(Number.isInteger) ||
+        ![0,90,180,270].includes(rot === undefined ? 0 : rot) || ![0,1,false,true,undefined].includes(mirror)) {
+      return { ok: false, code: 'bad_action' };
+    }
     const piece = PIECES[pieceId];
     if (!piece) return { ok: false, code: 'unknown_piece' };
     const remaining = state.remaining[playerIndex] || [];
@@ -162,8 +166,9 @@
     });
     const ranking = state.players.map((p) => p.id)
       .sort((a, b) => scores[b] - scores[a]);
+    const winners = ranking.filter((id) => scores[id] === scores[ranking[0]]);
     return {
-      scores, bonus, remainingSquares: remaining, ranking,
+      scores, bonus, remainingSquares: remaining, ranking, winners,
       moveCount: state.moves.length,
       durationMs: (state.finishedAt || Date.now()) - state.startedAt
     };

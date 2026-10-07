@@ -1,99 +1,131 @@
-/* net.js — 局域网客户端：REST 提交 + SSE 订阅（零依赖） */
-(function (global) {
-  'use strict';
-
-  class NetClient {
-    constructor(baseUrl) {
-      this.base = (baseUrl || (typeof location !== 'undefined' ? location.origin : '')).replace(/\/$/, '');
-      this.roomId = null;
-      this.token = null;
-      this.seat = null;
-      this.playerId = null;
-      this.es = null;
-    }
-
-    async request(method, path, body) {
+/* net.js — REST + SSE，动作校验版本、连接状态与同房生命周期。 */
+(function(global) {
+'use strict';
+class NetClient {
+  constructor(base) {
+    this.base = (base || (typeof location !== 'undefined' ? location.origin : '')).replace(/\/$/, '');
+    this.roomId = null;
+    this.token = null;
+    this.seat = null;
+    this.es = null;
+    this.state = null;
+    this.pending = false;
+  }
+  async request(method, path, body) {
+    const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 10000);
+    try {
       const res = await fetch(this.base + path, {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined
+        headers: body ? {'Content-Type': 'application/json'} : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: abort.signal
       });
-      let data = {};
-      try { data = await res.json(); } catch (e) { data = {}; }
-      if (!res.ok || data.ok === false) {
-        const err = new Error(data.error || ('HTTP ' + res.status));
-        err.code = data.error || ('http_' + res.status);
-        throw err;
+      let d;
+      try {
+        d = await res.json();
+      } catch (_) {
+        d = {};
       }
-      return data;
+      if (!res.ok || d.ok === false) {
+        const e = new Error(d.error || 'network_error');
+        e.code = d.error || 'network_error';
+        throw e;
+      }
+      return d;
+    } catch (e) {
+      if (!e.code) e.code = 'network_error';
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
-
-    async createRoom(opts) {
-      const data = await this.request('POST', '/api/rooms', {
-        name: opts.name, lang: opts.lang, seatCount: opts.seatCount
-      });
-      this.roomId = data.roomId; this.token = data.token; this.seat = data.seat;
-      this.playerId = data.playerId;
-      return data;
-    }
-
-    async joinRoom(opts) {
-      const data = await this.request('POST', '/api/rooms/' + encodeURIComponent(opts.roomId) + '/join', {
-        name: opts.name, token: opts.token
-      });
-      this.roomId = opts.roomId; this.token = data.token; this.seat = data.seat;
-      this.playerId = data.playerId;
-      return data;
-    }
-
-    async start() {
-      return this.request('POST', '/api/rooms/' + encodeURIComponent(this.roomId) + '/start', { token: this.token });
-    }
-
-    async move(action) {
-      return this.request('POST', '/api/rooms/' + encodeURIComponent(this.roomId) + '/move',
-        Object.assign({ token: this.token }, action));
-    }
-
-    async pass() {
-      return this.request('POST', '/api/rooms/' + encodeURIComponent(this.roomId) + '/pass', { token: this.token });
-    }
-
-    async record(format) {
-      return this.request('GET', '/api/rooms/' + encodeURIComponent(this.roomId) + '/record?format=' +
-        (format || 'json') + '&token=' + encodeURIComponent(this.token || ''));
-    }
-
-    /** 订阅房间事件；onEvent(type, payload) */
-    connect(onEvent, onError) {
-      this.disconnect();
-      const url = this.base + '/api/rooms/' + encodeURIComponent(this.roomId) +
-        '/stream?token=' + encodeURIComponent(this.token || '');
-      if (typeof EventSource === 'undefined') return null;
-      const es = new EventSource(url);
-      const handle = (type) => (e) => {
-        let payload = null;
-        try { payload = JSON.parse(e.data); } catch (err) { payload = null; }
-        if (onEvent) onEvent(type, payload);
-      };
-      es.addEventListener('state', handle('state'));
-      es.addEventListener('presence', handle('presence'));
-      es.addEventListener('end', handle('end'));
-      es.onerror = (e) => { if (onError) onError(e); };
-      this.es = es;
-      return es;
-    }
-
-    disconnect() {
-      if (this.es) { try { this.es.close(); } catch (e) { /* ignore */ } this.es = null; }
-    }
-
-    reset() { this.disconnect(); this.roomId = null; this.token = null; this.seat = null; this.playerId = null; }
   }
-
-  const api = { NetClient };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  global.BK = global.BK || {};
-  Object.assign(global.BK, api);
+  async createRoom(o) {
+    return this.adopt(await this.request('POST', '/api/rooms', o));
+  }
+  async joinRoom(o) {
+    return this.adopt(await this.request(
+        'POST', '/api/rooms/' + encodeURIComponent(o.roomId) + '/join', {name: o.name, token: o.token}));
+  }
+  adopt(d) {
+    Object.assign(this, {roomId: d.roomId, token: d.token, seat: d.seat});
+    return d;
+  }
+  post(action, body) {
+    return this.request(
+        'POST', '/api/rooms/' + encodeURIComponent(this.roomId) + '/' + action,
+        Object.assign({token: this.token}, body));
+  }
+  start() {
+    return this.post('start');
+  }
+  restart() {
+    return this.post('restart');
+  }
+  leave() {
+    return this.post('leave');
+  }
+  kick(seat) {
+    return this.post('kick', {seat});
+  }
+  async submit(type, body) {
+    if (this.pending) return;
+    this.pending = true;
+    try {
+      return await this.post(
+          type,
+          Object.assign(
+              {gameId: this.state && this.state.id, expectedMoves: this.state && this.state.moves.length},
+              body));
+    } finally {
+      this.pending = false;
+    }
+  }
+  move(action) {
+    return this.submit('move', action);
+  }
+  pass() {
+    return this.submit('pass');
+  }
+  record() {
+    return this.request(
+        'GET',
+        '/api/rooms/' + encodeURIComponent(this.roomId) + '/record?token=' + encodeURIComponent(this.token));
+  }
+  connect(onEvent, onStatus) {
+    this.disconnect();
+    if (typeof EventSource === 'undefined') throw new Error('network_error');
+    this.es = new EventSource(
+        this.base + '/api/rooms/' + encodeURIComponent(this.roomId) +
+        '/stream?token=' + encodeURIComponent(this.token));
+    this.es.onopen = () => onStatus && onStatus('connected');
+    this.es.onerror = () => onStatus && onStatus('reconnecting');
+    for (const type of ['state', 'removed'])
+      this.es.addEventListener(type, e => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.state) this.state = d.state;
+          if (d.self !== undefined) this.seat = d.self;
+          onEvent(type, d);
+        } catch (err) {
+          if (onStatus) onStatus('disconnected');
+        }
+      });
+    return this.es;
+  }
+  disconnect() {
+    if (this.es) this.es.close();
+    this.es = null;
+  }
+  reset() {
+    this.disconnect();
+    this.roomId = null;
+    this.token = null;
+    this.seat = null;
+    this.state = null;
+  }
+}
+const api = {NetClient};
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+global.BK = global.BK || {};
+Object.assign(global.BK, api);
 })(typeof window !== 'undefined' ? window : globalThis);
-

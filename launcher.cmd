@@ -9,5 +9,5 @@ if errorlevel 1 (
 )
 echo [Blokus] Starting LAN server on port 8765 ...
 echo [Blokus] 局域网联机地址见下方输出；单机模式也可直接在浏览器中选择。
-node "%~dp0server\lan-server.js" --port 8765 --open
+node "%~dp0scripts\start-lan.js" --port 8765
 endlocal

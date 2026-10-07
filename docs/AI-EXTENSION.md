@@ -1,170 +1,133 @@
 # AI 扩展与二次开发接口（AI-EXTENSION）
 
-> 版本：v1.0 ｜ 日期：2026-10-06 ｜ 状态：顶层设计已定稿，AI 实现留待后续
-> 本文档是 AI 对手的**唯一接口契约**。实现 AI 时不得修改 `game.js` 的公开行为，只能通过这里定义的挂载点接入。
+> 版本：v1.1 ｜ 日期：2026-10-08 ｜ R12：预留设计与参数文档；当前不实现 AI 对手
 
-## 1. 顶层设计
+## 1. 已实现与预留的边界
 
-### 1.1 设计原则
+当前已提供共享规则、合法着法枚举、对局创建/动作校验、克隆重建和序列化。players.controller/ai 元数据可保存，但 UI 没有 AI 调度，所有现有席位仍由用户操作。
+BK.AI 注册表、ctx 构建器、AI 实现、Worker 入口及未注册 AI 的降级提示都属于后续方案，不能在当前版本直接调用。
+旧规则版本 1 只供回放，AI 不得继续旧局。2/3 人为每人一色的简化模式，不能假定每局有四名玩家；本局玩家下标和全局颜色编号也不能混用。
 
-1. **人类与 AI 走同一条通道**：AI 产出的 `Action` 与人类点击产生的 `Action` 完全同构，都经 `game.applyAction()` 校验，
-   因此 AI 对局天然可存档、可回放、可导出棋谱。
-2. **只读上下文**：AI 拿到的是 `ctx` 只读快照（含合法着法枚举器），不能直接改状态；保证引擎单点事实来源。
-3. **可复现**：`options.seed` 注入确定性随机源，同一 seed + 同一对局 → 同一落子序列。
-4. **异步友好**：`onTurn` 返回 Promise，允许"思考延时"、Web Worker、远程推理等实现，UI 只需 await。
-5. **性能隔离**：重搜索类 AI 建议在 Web Worker 中运行；主线程接口不变（`options.workerUrl`）。
-
-### 1.2 运行位置与调用时序
-
-```
-ui.js 轮询到 currentPlayer.controller === 'ai'
-   └─ AIController.onTurn(ctx)            // ctx 只读，含合法着法枚举器
-        └─ 返回 Action { type:'place', piece, anchor, rot, mirror } | { type:'pass' }
-             └─ game.applyAction(state, action)   // 与人类同一校验通道
-                  ├─ 合法 → 入 moves[]、存档、渲染、音效
-                  └─ 非法 → console.warn + 回退到 safeAction()（见 3.3）
-```
-
-### 1.3 目录约定（预留）
-
-```
-js/ai/index.js        AI 注册表（把 controller 名称映射到实现）
-js/ai/random.js       随机合法着法（基线，约 40 行）
-js/ai/greedy.js       贪心启发式（角点/机动性/面积）
-js/ai/worker.js       Web Worker 入口（可选）
-```
-未实现前 `js/ai/` 目录可不存在；`game.js` 只依赖下方契约，不依赖具体文件。
-
-当前规则版本为 2：同色必须角接触且不得边接触，异色接触不限；全出完 +15，I1 收尾总计 +20。
-2/3 人为每人一色的简化模式；AI 应使用 state.seatCount / players，不假设始终有四个席位。
-旧规则版本 1 仅供历史回放，不应挂载 AI 继续对局；ctx 和控制器注册表仍属于预留接口。
-
-## 2. 接口一览
-
-| 接口 | 形态 | 用途 | 状态 |
-| --- | --- | --- | --- |
-| BK.AI.register(id, factory) | 函数 | 注册一个 AI 控制器工厂 | 预留 |
-| BK.AI.create(id, options) | 函数 → AIController | 创建控制器实例 | 预留 |
-| BK.AI.list() | 函数 → string[] | 列出可用 AI | 预留 |
-| AIController.onTurn(ctx) | 方法 → Promise&lt;Action&gt; | 轮到该 AI 时调用 | 预留 |
-| AIController.onGameEnd(result) | 方法 → void | 终局通知，可自我评估 | 预留 |
-| AIController.dispose() | 方法 → void | 释放资源（Worker/定时器） | 预留 |
-| BK.allLegalActions(state, playerIndex) | 函数 → Action[] | 合法着法枚举（含 pass） | v1 提供 |
-| BK.evaluateBoard(state, playerIndex) | 函数 → number | 基础局面评估（留给 AI 覆盖） | 预留 |
-
-## 3. 参数列表
-
-### 3.1 `BK.AI.create(id, options)`
-
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-| --- | --- | --- | --- | --- |
-| id | string | 是 | — | 控制器标识：`random` / `greedy` / `minimax` / 自定义 |
-| options.seed | number | 否 | 当前时间戳 | 随机种子；用于可复现 |
-| options.difficulty | 1–5 | 否 | 3 | 抽象难度，由实现自行解释 |
-| options.timeLimitMs | number | 否 | 1000 | 单步思考上限（毫秒） |
-| options.maxDepth | number | 否 | 2 | 搜索深度（搜索类 AI） |
-| options.workerUrl | string | 否 | null | 若提供则在 Web Worker 内运行 |
-| options.personality | object | 否 | {} | 自由配置（进攻/防守权重等），实现自定义 |
-| options.log | (level, message) =&gt; void | 否 | console | 诊断日志回调 |
-
-返回：`AIController`（见 3.2）。若 id 未注册，`create` 抛出 `AI_NOT_FOUND` 并在 UI 显示可读错误。
-
-### 3.2 `AIController`
-
-| 成员 | 类型 | 说明 |
+| 接口 | 状态 | 实际调用/用途 |
 | --- | --- | --- |
-| id | string | 控制器标识 |
-| displayName | string | UI 展示名（支持 `{zh, en}` 结构） |
-| onTurn(ctx) | (ctx) =&gt; Promise&lt;Action&gt; | 轮到该 AI 决策；超时由实现内部处理，UI 不强制中断 |
-| onGameEnd(result) | (result) =&gt; void | 终局回调，可用于记录统计 |
-| dispose() | () =&gt; void | 释放资源；对局结束或离开页面时调用 |
+| BK.createGame(options) | 已实现 | 创建规则 2 的新局 |
+| BK.allLegalActions(state,playerIndex,limit?) | 已实现 | 合法 place 动作列表；无合法着法时给 pass，调用方须先检查状态/玩家是否仍可行动 |
+| BK.hasAnyMove / mustPass | 已实现 | 判断合法落子与 PASS |
+| BK.applyAction(state,action,options?) | 已实现 | 唯一动作校验通道；原地修改 state，返回 ok/code/move |
+| BK.toJSON/fromJSON/rebuild/replayTo | 已实现 | JSON 快照、严格还原、搜索演练与回放 |
+| BK.scoreFor/computeResult | 已实现 | 剩余面积、标准奖励、并列结果 |
+| BK.AI.register/create/list | 预留 | 控制器工厂注册表 |
+| AIController.onTurn/onGameEnd/dispose | 预留 | 异步决策、终局通知、资源回收 |
+| ctx / BK.evaluateBoard | 预留 | 只读上下文与启发式评估 |
 
-### 3.3 `ctx`（只读上下文）
+Node 对应 require('../js/game.js')、require('../js/rules.js') 等模块；浏览器全部位于 window.BK。
+
+## 2. 底层实际参数
+
+### createGame(options)
+
+| 参数 | 类型 | 默认/说明 |
+| --- | --- | --- |
+| seatCount | 2/3/4 | 默认 4；有 seatIds 时必须与其长度一致 |
+| seatIds | number[] | 默认 SEATS[seatCount]；全局颜色编号 0–3，2–4 个唯一编号，可自定义顺序 |
+| players | object[] | 按本局顺序；name/controller/ai；controller 默认 human，ai 默认 null |
+| mode | hotseat/lan | 默认 hotseat |
+| rulesVersion | number | 新局默认 2；1 仅历史解释 |
+| id/createdAt/startedAt | string/string/number | 可注入标识、ISO 日期、毫秒起点，测试/重建用 |
+| lang/sound/server | string/boolean/object | zh/true/null；附带元数据 |
+
+### applyAction(state,action,options)
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| state | GameState | 修改原对象；搜索必须先克隆 |
+| action.type | place/pass/resign | AI 正常决策只使用 place/pass；resign 专供管理离席/明确弃权 |
+| action.piece | string | place 必填，如 F5 |
+| action.anchor | [row,col] | place 必填；整数；变换后包围盒左上原点，不一定占格 |
+| action.rot | 0/90/180/270 | 默认 0 |
+| action.mirror | 0/1 或 boolean | 默认 0，记录规范化为 0/1 |
+| action.player/action.n | number | 可选一致性检查，若有必须匹配当前玩家和下一手号 |
+| action.reason | string | 可选，最多保存 200 字符到 JSON move；文本棋谱不保存 |
+| options.ts/options.elapsedMs | number | 非负有限毫秒数；默认当前时间/本回合经过时间，重建保留原值 |
+| options.validate | boolean | 默认 true；false 仅跳过 PASS 的 hasAnyMove 检查，落子仍校验；正常 AI 不应使用 |
+
+失败返回 {ok:false,code}，不改变状态；成功为 {ok:true,move}。联网正常决策只能提交 /move 或 /pass，仍由服务端裁判。
+
+终局 result：scores/bonus/remainingSquares 按玩家 id 映射；ranking 为排序 id 数组，winners 为所有最高分 id；moveCount 为总手数，durationMs 为结束减开始时间。
+规则 2 的奖励为 15/20；旧规则 1 保留旧计分。并列不得只取 ranking[0] 显示为唯一赢家。
+
+## 3. 后续控制器契约（尚未实现）
+
+### 注册与创建
+
+BK.AI.register(id,factory)、create(id,options)、list()；factory(options) 返回 AIController。
+计划由 create 对未知 id 抛出 AI_NOT_FOUND，由未来 UI 提示或降级人类席位，不阻断历史回放。
+
+| options 参数 | 类型 | 默认 | 用途 |
+| --- | --- | --- | --- |
+| seed | number | 创建时固定的种子 | 复现决策，写入玩家 ai 配置 |
+| difficulty | 1–5 | 3 | 抽象难度 |
+| timeLimitMs | number | 1000 | 思考预算，由调度器管理超时 |
+| maxDepth | number | 2 | 搜索深度 |
+| workerUrl | string/null | null | 重搜索 Worker 地址，兼容传统脚本加载 |
+| personality | object | {} | 启发式权重 |
+| log | function | console 回调 | 诊断信息，不记录私人连接身份 |
+
+| AIController 成员 | 类型 | 用途 |
+| --- | --- | --- |
+| id/displayName | string / string 或 {zh,en} | 身份与界面名 |
+| onTurn(ctx) | Promise<Action> | 异步决定一个合法 place/pass |
+| onGameEnd(result) | void | 终局通知 |
+| dispose() | void | 清理 Worker、请求和计时器 |
+
+### ctx 参数（未来构建器）
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| board | Int8Array(400) 只读视图 | 值 = 玩家下标或 -1；索引 = row * 20 + col |
-| playerIndex | number | 当前 AI 的玩家下标 0–3 |
-| playerId | string | `blue` / `yellow` / `red` / `green` |
-| remaining | string[][] 只读副本 | 每名玩家剩余棋子 id |
-| moveHistory | MoveRecord[] 只读副本 | 完整走子历史（含耗时） |
-| turnNumber | number | 当前是全局第几手（从 1 计） |
-| legalActions() | () =&gt; Action[] | 惰性枚举全部合法着法（含 `pass`）；结果被缓存 |
-| hasAnyMove() | () =&gt; boolean | 是否存在非 pass 的合法着法 |
-| corner | [row, col] | 自己的起始角 |
-| scores | () =&gt; number[] | 当前预估分数（实时计算） |
-| clone() | () =&gt; ctx | 深拷贝，用于搜索演练（不影响真实状态） |
-| isTerminal() | () =&gt; boolean | 是否终局 |
-| seedRandom | () =&gt; number | [0,1) 确定性随机数 |
+| board | Int8Array(400) 副本 | 不直接传引擎数组；row*20+col，值为本局玩家下标/-1 |
+| playerIndex/playerId | number/string | 本局下标与颜色 id |
+| seatCount/seatIds/rulesVersion | number/number[]/number | 实际人数、颜色顺序与规则版本 |
+| remaining/moveHistory | 深复制数组 | 剩余棋子与着法，不允许写回真实状态 |
+| turnNumber/corner | number/[row,col] | 下一手号与起始角 |
+| legalActions()/hasAnyMove() | Action[]/boolean | 惰性、缓存的合法着法与检查 |
+| scores()/isTerminal() | number[]/boolean | 当前得分与终局 |
+| clone() | ctx | 独立搜索副本 |
+| seedRandom() | number | [0,1) 确定性随机数 |
 
-### 3.4 `Action`
+只读需由未来适配器保证隔离：TypedArray 本身不是不可变对象，应提供副本或访问器。不能把内部 state/board 引用传给控制器。
 
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| type | 'place' \| 'pass' | 是 | 走子类型 |
-| piece | string | place 时必填 | 棋子 id，如 `F5` |
-| anchor | [row, col] | place 时必填 | 锚点（棋子最小行列格），0–19 |
-| rot | 0 \| 90 \| 180 \| 270 | 否 | 默认 0 |
-| mirror | 0 \| 1 | 否 | 默认 0，是否镜像 |
-| reason | string | 否 | 诊断用：AI 决策理由（会写入对局日志，不入棋谱） |
+## 4. 挂载点与调用时序（未来实施）
 
-### 3.5 `result`（终局）
+```
+ui.js / 未来控制器调度器：观察 state.turn 和 players[turn].controller
+  → 构造深复制 ctx，记录 gameId + moves.length
+  → AIController.onTurn(ctx)
+  → 确认仍是同局同回合；已悔棋/换局/离开则丢弃迟到结果
+  → 单机 applyAction；联机 NetClient.move/pass（保留服务端权威）
+  → 成功后保存/渲染/音效；失败或超时选择安全合法动作
+终局/离开 → onGameEnd、dispose，清理调度与 Worker
+```
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| scores | { [playerId]: number } | 各玩家得分 |
-| ranking | string[] | 玩家 id，按名次排序 |
-| bonus | { [playerId]: 0 \| 15 \| 20 } | 完成奖励 |
-| remainingSquares | { [playerId]: number } | 剩余格数 |
-| moveCount | number | 总手数 |
-| durationMs | number | 对局时长 |
+这些步骤尚未写入 ui.js；必须在实现 AI 时新增调度层，不能只给玩家写 controller='ai' 就认为完成。
+建议目录 js/ai/index.js、random.js、greedy.js、worker.js，目前可以不存在。
+现有脚本都是非 ES Module，新增 AI 也应保持 file:// 单机可运行；更重的 Worker 支持应独立检测环境并提供降级。
 
-## 4. 配置协议（存档与 UI）
-
-对局存档中 AI 玩家记录如下结构（`players[i]`）：
+玩家配置片段（可被现有序列化保存，暂不会执行）：
 
 ```json
 {
-  "id": "yellow",
   "name": "AI-1",
   "controller": "ai",
-  "ai": {
-    "id": "greedy",
-    "difficulty": 3,
-    "seed": 20261006,
-    "timeLimitMs": 1000,
-    "maxDepth": 2,
-    "personality": { "attack": 0.4, "defense": 0.6 }
-  },
-  "corner": [0, 19],
-  "passed": false,
-  "finished": false
+  "ai": {"id": "greedy", "seed": 20261008, "difficulty": 3, "timeLimitMs": 1000, "maxDepth": 2}
 }
 ```
 
-导入对局时若 `ai.id` 未注册：降级为人类玩家并提示，不阻断回放。
+## 5. 实现时验证
 
-## 5. 复现与环境要求
+- 同 seed/options/引擎版本的着法序列一致，决策中避免 Math.random；预算计时可能有差异时保存实际着法和用时。
+- 全部 AI 动作通过共享 applyAction；只有无合法落子才 PASS。
+- 2/3/4 人与自定义颜色顺序均可终局；旧规则只回放，不参与新 AI 对局。
+- JSON/BKS1 往返一致，JSON 保持 elapsedMs/终局时间与并列结果。
+- 超时、非法返回、Worker 出错、悔棋/换局后的迟到结果可恢复；离开页面无残留定时器。
 
-- 同一 `seed` + 同一 `options` + 同一引擎版本 → 必须产生相同着法序列；实现中禁止使用 `Math.random()`，改用 `ctx.seedRandom()`。
-- AI 不得读取 DOM、时钟以外的环境信息；`timeLimitMs` 是唯一允许的时间敏感输入（其结果允许因计时波动不同，此时应把实际用时应写入 `Action.reason`）。
-- Web Worker 实现需通过 `options.workerUrl` 注入，主线程接口保持不变。
-
-## 6. 测试要求（AI 实现时）
-
-| 测试 | 内容 |
-| --- | --- |
-| 确定性 | 同 seed 两次运行，着法序列完全一致 |
-| 合法性 | 1000 局随机对局中 AI 着法全部通过 `game.applyAction` 校验 |
-| 终止性 | 每步在 `timeLimitMs * 1.5` 内返回；无死循环 |
-| 回放一致性 | AI 对局导出棋谱后重新导入，回放结果与原局一致 |
-| 性能 | 4×AI 对局完整跑完 &lt; 3 分钟（难度 3、单步 1s 上限） |
-
-## 7. 后续路线图（建议）
-
-1. `random`：随机合法着法（基线、验证通道）；
-2. `greedy`：启发式（优先角点扩展、保留大块、压缩对手空间）；
-3. `minimax + alpha-beta`：2–4 层搜索 + 走法排序 + 置换表；
-4. `MCTS`：蒙特卡洛树搜索（时间预算控制）；
-5. 学习类：策略网络 / 自我对局（需要训练管线，独立仓库）。
-
+可按随机合法基线 → 贪心 → 搜索/MCTS 逐步实现；候选角点枚举和 Worker 性能优化应先测量，再扩展。

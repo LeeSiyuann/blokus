@@ -1,15 +1,18 @@
 {
   "name": "blokus",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "四人角斗士棋 Blokus 复刻版：零依赖、零构建、单机 + 局域网联机",
   "scripts": {
     "test": "node tests/run-all.js",
     "test:browser": "node tests/browser-smoke.js",
     "test:lan": "node tests/browser-lan-smoke.js",
-    "test:all": "node tests/run-all.js && node server/lan-server.js --port 18345 --selftest && node tests/browser-smoke.js",
-    "lan": "node server/lan-server.js --port 8765 --open",
-    "selftest": "node server/lan-server.js --port 18345 --selftest"
+    "test:all": "node tests/run-all.js && node server/lan-server.js --port 18345 --selftest && node tests/server-reliability.js && node tests/browser-smoke.js && node tests/browser-lan-smoke.js",
+    "lan": "node scripts/start-lan.js --port 8765",
+    "selftest": "node server/lan-server.js --port 18345 --selftest",
+    "test:server": "node tests/server-reliability.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

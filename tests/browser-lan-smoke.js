@@ -81,6 +81,7 @@ async function attach(target) {
   cdp.onEvent = (msg) => {
     if (msg.method === 'Runtime.exceptionThrown') {
       const d = msg.params.exceptionDetails || {};
+        check(false,'浏览器无未处理异常：'+d.text);
       console.error('  [页面异常] ' + (d.text || '') + ' ' + ((d.exception && d.exception.description) || ''));
     }
   };
@@ -170,6 +171,8 @@ async function main() {
     await sleep(400);
     check(await host.evalJs("document.querySelector('#btnLobbyStart').disabled === false"), '满员后可开始');
     await host.shot('10-lan-lobby.png');
+    await host.evalJs("document.querySelector('#lanAddress').value='http://192.168.1.10:8765/';document.querySelector('#lanAddress').dispatchEvent(new Event('input'))");
+    check(await host.evalJs("document.querySelector('#lobbyLink').textContent.includes('192.168.1.10') && !document.querySelector('#btnCopyLink').disabled"), '分享链接使用可访问的主机地址');
 
     // 开始对局
     await host.evalJs("document.querySelector('#btnLobbyStart').click()");
@@ -209,6 +212,34 @@ async function main() {
     await sleep(500);
     check((await guest.evalJs("document.querySelector('#playersPanel').textContent")) === before, '非当前回合无法落子');
     await guest.shot('11-lan-game.png');
+
+    await host.send('Page.reload');await sleep(1500);
+    check(await host.evalJs("document.body.dataset.view==='game' && document.querySelector('#playersPanel').textContent.includes('Host')"), '房主刷新自动恢复对局与座位');
+    await guest.send('Page.reload');await sleep(1500);
+    check(await guest.evalJs("document.body.dataset.view==='game' && document.querySelector('#playersPanel').textContent.includes('Guest ★')"), '邀请页面刷新恢复访客座位');
+    await host.evalJs("window.__sounds=[];window.__play=BK.Sound.play;BK.Sound.play=function(k){window.__sounds.push(k);return window.__play.call(this,k)}");
+    const completed=await host.evalJs(`(async()=>{
+      const host=JSON.parse(sessionStorage.getItem('blokus.connection')),guest=BK.getConnection();
+      const route='/api/rooms/'+host.roomId;let steps=0;
+      while(steps++<90){
+        const response=await fetch(route+'/record?token='+host.token).then(r=>r.json());
+        const state=BK.fromJSON(response.record.game);if(state.status==='finished')return true;
+        const action=BK.allLegalActions(state,state.turn,1)[0],token=state.turn===0?host.token:guest.token;
+        const result=await fetch(route+'/'+(action.type==='pass'?'pass':'move'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...action,token,gameId:state.id,expectedMoves:state.moves.length})}).then(r=>r.json());
+        if(!result.ok)throw new Error(result.error);
+      }return false;
+    })()`);
+    await sleep(600);
+    check(completed,'联机完整对局可正确终局');
+    check(await host.evalJs("window.__sounds.includes('place') && window.__sounds.filter(k=>k==='win').length===1"), '联机落子音效与单次终局音效');
+    await host.evalJs("document.querySelector('#btnOverAgain').click()");await sleep(700);
+    check(await host.evalJs("document.body.dataset.view==='game' && document.querySelectorAll('#tray .tray-piece').length===21 && document.querySelector('#overModal').classList.contains('hidden')"), '同房再战创建联机新局');
+    check(await guest.evalJs("document.body.dataset.view==='game' && document.querySelectorAll('#tray .tray-piece').length===21"), '访客同步进入下一局');
+    await guest.evalJs("document.querySelector('#btnExitGame').click()");await sleep(500);
+    check(await guest.evalJs("document.body.dataset.view==='launcher' && !JSON.parse(sessionStorage.getItem('blokus.connection'))"), '离开房间清理本地连接');
+    await host.evalJs("document.querySelector('#tray .tray-piece').click()");const point=await host.cellPoint(0,0);await host.clickAt(point.x,point.y);await sleep(500);
+    check(await host.evalJs("document.querySelector('#playersPanel').textContent.includes('已离席') && document.querySelector('#turnBanner').textContent.includes('轮到你')"), '离席玩家自动弃权，剩余玩家可继续');
+    await host.shot('12-lan-recovery.png');
 
     const failed = results.filter((r) => !r.ok);
     console.log('\n----------------------------------------');

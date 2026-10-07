@@ -1,144 +1,99 @@
 # 实施文档（IMPLEMENTATION）
 
-> 版本：v1.0 ｜ 日期：2026-10-06 ｜ 面向：使用者 / 二次开发者 / 维护者
+> 版本：v1.1 ｜ 日期：2026-10-08 ｜ 验收详情：REQUIREMENTS.md
 
-## 1. 环境要求
+## 1. 环境与启动
 
-| 场景 | 要求 |
+| 场景 | 要求与入口 |
 | --- | --- |
-| 单机热座 / 回放 / 棋谱 | 任意现代浏览器（Chrome / Edge / Firefox），双击 index.html 即可，无需安装任何东西 |
-| 局域网联机 | Node.js 18+（本机已装 v24），仅用于跑 server/lan-server.js；玩家端只需浏览器 |
-| 开发 / 测试 | Node.js 18+（跑 tests/），无 npm 依赖 |
+| 单机、历史、回放、导入导出 | 现代浏览器，双击 index.html；传统 script，不要求 Node 或 HTTP 服务 |
+| 局域网主机 | Node 18+；node scripts/start-lan.js --port 8765；Windows launcher.cmd；macOS/Linux bash scripts/start-lan.sh |
+| 直接运行服务 | node server/lan-server.js --port 8765 --advertise 192.168.1.10；手动打开 localhost:8765，IP 替换成本机地址 |
+| 单元/服务测试 | Node 18+，无依赖安装 |
+| 浏览器测试 | Node 22+（内置 WebSocket）、Chrome 或 Edge、允许启动浏览器子进程 |
 
-## 2. 运行方式
+Windows 启动器检测不到 Node 时打开 file:// 单机；检测到 Node 时启动 HTTP 服务并打开同一启动器。
+file:// 页面不开放联机入口。服务核心仅使用 http/crypto/fs/path/url；系统网卡发现与打开浏览器由 scripts/start-lan.js 的 os/child_process 辅助完成。
 
-### 2.1 单机（最简）
+房主创建房间并选择人数上限，分享大厅的局域网链接；至少两名玩家加入即可开局，实际人数决定标准/简化模式。
+多网卡地址应由主机确认；直接运行服务未提供可分享地址时，大厅要求填写主机 HTTP(S) 地址，不会生成 localhost 邀请链接。
+其他设备无法访问时检查同一 Wi-Fi/网段及主机专用网络防火墙放行。跨网段/NAT 不在支持范围内。
 
-双击 `index.html`（或 `launcher.cmd`）→ 启动器选择「单机热座」→ 选人数与昵称 → 开始。
+## 2. 对局与恢复
 
-> file:// 协议下浏览器不允许联网请求，因此启动器会禁用「局域网联机」入口并显示提示，这是预期行为。
+4 人标准规则，2/3 人每人一色的「简化模式」，具体落子和计分见 DESIGN 第 3 节。
+单机可选子、旋转 R、翻转 F、点击棋盘落子、PASS 和悔棋；输入框及弹窗内的按键不会误触游戏快捷键。
+新局零步和每次状态变化均尝试保存，对局中显示成功或失败状态。写入失败仍可继续当前页面对局，应立即导出 JSON。
 
-### 2.2 局域网联机
+浏览器「继续上一局」用于未完成的单机局。联机保存的是连接身份：刷新/重新打开原浏览器可恢复同一席位，启动器也提供「恢复联机」。
+每标签页 sessionStorage 保留自己的身份，localStorage 保留最近一次连接以支持关闭后恢复；同源多个房间关闭后只能自动找回最近一次连接。
+临时掉线冻结操作并显示重连，SSE 恢复后收到权威全量状态。关页面不会让出座位；主动离开或被踢会使身份失效。
+
+大厅离席移除并整理座位，开局后座位/颜色保持稳定，离席玩家轮到时记录 RESIGN 并退出轮次。
+房主离开会转移房主身份。终局后由房主「再来一局」：至少两名留下的玩家直接在同房开新局，仅剩一人则回大厅等待加入。
+服务 CLI 默认写入 server/rooms.json，重启恢复未过期房间、动作和身份；无活动两小时回收。该文件含私人连接身份，不入 Git，也不通过静态 HTTP 暴露。
+
+## 3. 历史、备份与棋谱
+
+- 历史显示最后更新时间、模式/规则版本、玩家、步数、进度；终局显示比分。删除移入回收站，回收站可恢复。
+- 自动容量管理上限 200 局 / 4 MiB，按时间回收最旧已结束或已删除记录，索引和正文一起删除；未结束且未删除的对局不会自动丢弃。清理发生时显示提示。
+- 「备份全部数据」导出设置、全部历史（含回收站）和继续指针；在启动器「导入棋谱」选择备份 JSON 或粘贴内容。按 id 合并，同 id 由导入记录覆盖；先全部校验再写入，失败回滚。导入超过上限会拒绝，不主动删除现有数据。
+- 备份不含联机 token；跨浏览器可迁移棋谱和设置，不能据此接管旧房间席位。联机记录导入后仅回放。
+- BKS1 文本保存规则、座位、昵称（JSON 引号转义）、PLACE/PASS/RESIGN 动作。文本不包含逐步用时；需保留计时、终局时间与扩展元数据时使用单局 JSON。
+- 复制先尝试 Clipboard API，再复制临时文本框中的实际内容；均失败时明确提示，可手动选择内容或下载。
+
+JSON 格式 version=1 与 rulesVersion 分离。规则版本 2 为当前规则；缺省/版本 1 为旧非标准规则，保留原计分，只读回放/导出。
+导入拒绝非法动作/手号/轮次、未知版本、非法坐标/朝向/座位和与着法不一致的 board/remaining/status/turn 快照。
+动作上限每名玩家 22 条（21 次放置加一次 PASS/RESIGN），四人最多 88 条；文本上限 512 KiB，界面导入内容上限约 12 MiB，再受存储容量限制。
+
+## 4. 实现定位
+
+| 文件 | 实际职责 |
+| --- | --- |
+| js/pieces.js / rules.js / game.js / notation.js | 双端共用棋子、规则、状态机和棋谱；UI 与服务端均复用；动作重放严格校验 |
+| js/storage.js | 设置、正文/索引事务写入与失败回滚、软删除/恢复、容量清理、备份和连接身份 |
+| js/replay.js | 逐步重建、暂停/播放、即时变速；UI 使用独立 replayState |
+| js/net.js / server/lan-server.js | REST、SSE、10 秒请求超时、动作状态版本检查、鉴权、退出/再战和房间持久化 |
+| js/ui.js / i18n.js / sound.js / render.js | 界面与输入、动态词条、音效去重、Canvas；昵称按用户文本显示 |
+| scripts/start-lan.js / launcher.cmd / start-lan.sh | 网卡地址发现、浏览器打开与运行入口 |
+| tests/reliability.js / server-reliability.js | 损坏数据/计时/并列/存储回滚/容量/回放计时器，以及联机鉴权与重启恢复 |
+
+## 5. 验证
 
 ```bash
-node server/lan-server.js --port 8765 --open     # 主机
+node tests/run-all.js
+node server/lan-server.js --port 18345 --selftest
+node tests/server-reliability.js
+node tests/browser-smoke.js
+node tests/browser-lan-smoke.js
+npm run test:all
 ```
 
-1. 主机浏览器打开启动器 →「局域网联机」→ 创建房间，输入昵称；
-2. 页面显示房间码（如 4F2K）与地址 `http://<主机IP>:8765/?room=4F2K`；
-3. 其他玩家在同一局域网内打开该地址 → 加入房间（或手动输入房间码）；
-4. 人齐后房主开始对局；服务端为裁判，轮次与合法性均校验。
+2026-10-08 在本机执行 npm run test:all：
 
-Windows 若提示防火墙，请选择「允许专用网络」。跨网段/NAT 场景不在支持范围内。
-
-### 2.3 启动脚本
-
-| 脚本 | 平台 | 行为 |
+| 层级 | 结果 | 关键覆盖 |
 | --- | --- | --- |
-| launcher.cmd | Windows | 检测 Node → 启动局域网服务（默认 8765）→ 打开浏览器到启动器 |
-| scripts/start-lan.sh | macOS / Linux | 同上（bash 版本） |
-| index.html | 全平台 | 无 Node 时的单机 / 回放 / 导入导出入口 |
+| 单元 | 673/673 | 标准独立局面、旧版、2/3/4 人整局、严格导入、计时、并列、存储失败回滚、容量和回放变速 |
+| 服务自检 | OK | 建房/加入/开局、轮次、同色边/角、标准规则版本 |
+| 服务可靠性 | 22/22 | token 鉴权、静态目录限制、错误/过期动作、重启恢复、离席/踢人/房主转移/再战 |
+| 单机浏览器 | 44/44 | file:// 启动、界面、双语、保存反馈、完整对局、备份/回收站、损坏数据拒绝、昵称转义 |
+| 联机浏览器 | 28/28 | 双页面同步、分享地址、双方刷新保位、完整终局、音效触发一次、同房再战、退出后继续 |
+| 启动辅助 | 自检 OK | node scripts/start-lan.js --port 18345 --selftest |
 
-## 3. 文件清单
+浏览器测试通过 Chrome DevTools Protocol 直连本机 Chrome/Edge，遇到运行时异常会计为失败；本环境经批准在沙箱外启动浏览器。
+截图在 output/playwright/；已查看 08-history-reliability.png 与 12-lan-recovery.png，历史按钮、英文错误提示、离席状态和简化模式标注清晰。
+这是同机双页面验证，尚未代替真实跨设备、防火墙、Firefox 和 macOS/Linux 实测。剪贴板权限、声音可听性和移动端触控仍应按实际设备验收。
 
-| 路径 | 说明 |
-| --- | --- |
-| index.html | 入口单页：启动器 / 对局 / 回放 三视图 |
-| styles.css | 全部样式（含四色主题、响应式） |
-| js/pieces.js | 21 种棋子定义与朝向变换 |
-| js/rules.js | 规则判定与计分（纯函数，双端复用） |
-| js/game.js | 对局状态机，双端复用，AI 挂载点 |
-| js/notation.js | BKS1 文本 / JSON 棋谱编解码 |
-| js/storage.js | localStorage 存档、历史索引、容量管理 |
-| js/render.js | Canvas 渲染器 |
-| js/replay.js | 回放播放器 |
-| js/i18n.js | 中英文词条与切换 |
-| js/sound.js | WebAudio 合成音效 |
-| js/net.js | 局域网客户端（REST + SSE） |
-| js/ui.js | 界面总控与事件绑定 |
-| server/lan-server.js | 零依赖局域网服务（静态托管 + 房间 + 裁判） |
-| tests/run-all.js | 规则/棋谱/状态机单元测试入口 |
-| tests/browser-smoke.js | 浏览器界面冒烟测试（Chrome DevTools Protocol，零 npm 依赖） |
-| tests/browser-lan-smoke.js | 局域网端到端测试（两个页面同房对局） |
-| launcher.cmd / scripts/start-lan.sh | 一键启动局域网服务并打开浏览器 |
-| docs/* | 方案、设计、实施、AI 接口、日志 |
+人工验收建议：两台同网段设备同房完成一局，拔网后恢复；主机重启后重新进入；4 人各走数手后刷新；回放切换速度并跳转；导出备份后换浏览器导入；拒绝剪贴板权限时检查复制反馈。
 
-## 4. 开发流程（与 AGENTS.md 同步）
+## 6. 协作与版本
 
-1. 在 `docs/plan/PLAN.json` 登记任务（status=doing）；
-2. 小步实现并自测：`node tests/run-all.js`；
-3. 更新文档（DESIGN / IMPLEMENTATION / AI-EXTENSION / README 按需）；
-4. 追加日志：`docs/LOG.md` + `logs/YYYY-MM-DD.md`；
-5. `git add -A && git commit -m "type(scope): 说明"`；
-6. 将 `PLAN.json` 置为 done 并写入 commit hash；向用户汇报。
+按 AGENTS.md：先登记 PLAN.json=doing 并更新 PLAN.md，再实现/验证/文档/日志，git add -A & commit，最后回填 done 与实现提交哈希。
+本次仅本地提交，推送和 PR 仍按用户授权执行。AI 当前仅有设计与底层接口，尚无 AI 注册表、调度器或对手，详见 AI-EXTENSION.md。
 
-### 提交信息
-
-`feat | fix | docs | chore | test | refactor` + `(scope)` + 中文简述。
-
-### 分支与 PR
-
-- 主分支 `main` 保持可运行；
-- **仅在用户明确提示时才创建 PR/MR**，由用户自行合入；
-- PR 创建后把链接汇报给用户（并在需要时用 code_review MCP 读取检查结果）。
-
-## 5. 测试与验证
-
-```bash
-node tests/run-all.js                             # 规则/棋谱/状态机 全量断言
-node server/lan-server.js --port 8765 --selftest  # 服务端自检（起服→自测→退出）
-node --check js/rules.js                          # 语法检查（逐文件）
-node tests/browser-smoke.js                       # 浏览器界面冒烟（需 Chrome/Edge）
-node tests/browser-lan-smoke.js                   # 局域网端到端（需 Chrome/Edge）
-npm run test:all                                  # 单元 + 服务端自检 + 浏览器冒烟
-```
-
-### 最近一次全量验证结果（2026-10-07）
-
-| 项目 | 结果 |
-| --- | --- |
-| node tests/run-all.js | 通过 620 / 620 |
-| node server/lan-server.js --port 18345 --selftest | OK |
-| node tests/browser-smoke.js | 通过 35 / 35（截图见 output/playwright/） |
-| node tests/browser-lan-smoke.js | 通过 19 / 19 |
-
-浏览器手测清单（每次发版前）：
-
-1. 启动器：语言切换、音效开关、三入口可用性（file:// 下联机禁用提示）；
-2. 单机：4 人各落 3 手 → 非法落子被拒（音效提示）→ PASS → 悔棋 → 刷新继续；
-3. 回放：进入历史→逐步前进/后退→自动播放→跳转→速度切换；
-4. 导出：文本棋谱 + JSON 下载/复制 → 清空后导入还原 → 回放一致；
-5. 联机：两个浏览器窗口（不同 profile）同房对局，验证轮次锁定与断线重连。
-
-### 规则修复验证（M9）
-
-- 独立手工局面验证同色角接触、边接触、异色接触、首子、重叠、PASS 和 +15/+20 奖励。
-- 2/3/4 人完整模拟，标准棋谱往返、旧 JSON/BKS1 无版本记录回放与原计分保持、未知规则版本拒绝。
-- 服务端自检额外验证同色边接触拒绝、角接触接受、规则版本为 2。
-- 浏览器检查中英简化模式标签、历史标签、旧记录只读回放和离开自动回放后新局不被覆盖。
-- 浏览器在受限环境启动超时；经批准在沙箱外运行通过。截图：output/playwright/06-simplified-en.png、07-legacy-replay.png、10-lan-lobby.png、11-lan-game.png。
-
-## 6. 数据与迁移
-
-- 浏览器存档位于 localStorage，键名见 DESIGN 第 7 节；JSON 格式 version 仍为 1，规则版本 rulesVersion 为 2。
-- 缺省 rulesVersion 或值为 1 的旧记录只回放/导出，保留旧着法与旧计分；未知规则版本拒绝。新棋谱不得用旧应用导入。
-- 清除浏览器数据会丢失存档，请定期用「导出 JSON」备份；
-- 导入时执行结构校验（20×20 棋盘、moves ≤ 5000、玩家 2–4 人），不合法则报错拒绝。
-
-## 7. 常见问题
-
-| 现象 | 原因 | 处理 |
+| 版本 | 日期 | 内容 |
 | --- | --- | --- |
-| 双击后「局域网联机」灰掉 | file:// 限制 | 用 launcher.cmd 或 node server/lan-server.js 后从 http:// 打开 |
-| 其他设备打不开地址 | 防火墙 / 不同网段 | 放行专用网络；确认同一 Wi-Fi；用主机 IP 而非 localhost |
-| 没有声音 | 浏览器自动播放策略 | 点击页面任意处后生效（首次手势创建 AudioContext） |
-| 历史对局丢失 | 清理浏览器数据 | 从导出的 JSON 重新导入 |
-| 回放与对局不一致 | 手改过存档 | 以 moves[] 为准自动重放，日志中会记录告警 |
-
-## 8. 版本与发布
-
-| 版本 | 日期 | 内容 | 提交 |
-| --- | --- | --- | --- |
-| v0.1.0 | 2026-10-06 | 仓库/文档/规范初始化 | 见 docs/LOG.md |
-| v1.0.0 | 2026-10-07 | 完整实现：启动器、单机热座、局域网联机、存档、历史回放、棋谱导入导出、中英双语、音效 | 见 docs/LOG.md |
-
+| v0.1.0 | 2026-10-06 | 仓库与协作规范 |
+| v1.0.0 | 2026-10-07 | 启动器、热座/联机、存档/回放/棋谱、中英文与音效 |
+| M9 | 2026-10-07 | 修正规则/计分、简化模式与旧棋谱隔离；be51391 |
+| v1.1.0 / M10 | 2026-10-08 | R1–R12 正确性、数据可靠性、联机恢复与生命周期补齐；见 LOG.md OP-012 |

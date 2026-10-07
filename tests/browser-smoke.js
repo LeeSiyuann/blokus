@@ -104,6 +104,7 @@ async function main() {
     cdp.onEvent = (msg) => {
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails || {};
+        check(false,'浏览器无未处理异常：'+d.text);
         console.error('  [页面异常] ' + (d.text || '') + ' ' + ((d.exception && d.exception.description) || ''));
       } else if (msg.method === 'Log.entryAdded') {
         console.error('  [页面日志] ' + (msg.params.entry && msg.params.entry.text));
@@ -276,6 +277,26 @@ async function main() {
     await shot('07-legacy-replay.png');
     await evalJs("document.querySelector('#btnReplayBack').click(); document.querySelector('#btnHistoryBack').click(); document.querySelector('#btnContinue').click()");
     check(await evalJs("document.body.dataset.view==='replay'"), '继续旧存档也进入只读回放');
+
+    await evalJs("document.querySelector('#btnReplayBack').click(); document.querySelector('#btnHistoryBack').click(); document.querySelector('#btnSingle').click(); document.querySelector('#nameList input').value='Alice Smith'; document.querySelector('#langToggle').click()");
+    check(await evalJs("document.querySelector('#nameList input').value==='Alice Smith'"), '语言切换保留自定义昵称');
+    check(await evalJs("document.querySelector('#seatSeg .active').dataset.seats==='2' && document.querySelectorAll('#nameList input').length===2"), '记忆人数与姓名框一致');
+    await evalJs("document.querySelector('#btnSetupStart').click()");
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===0"), '新局零步即保存');
+    await evalJs("window.__setItem=Storage.prototype.setItem; Storage.prototype.setItem=function(){throw new Error('quota')}; document.querySelector('#btnExitGame').click(); Storage.prototype.setItem=window.__setItem");
+    check(await evalJs("document.querySelector('#toast').textContent.includes('Save failed')"), '存储失败显示明确提示');
+    await evalJs("document.querySelector('#btnHistory').click(); window.__confirm=window.confirm;window.confirm=()=>true;document.querySelector('#historyList .history-item .ghost').click();window.confirm=window.__confirm;document.querySelector('#btnTrash').click()");
+    check(await evalJs("document.querySelectorAll('#historyList .history-item').length===1"), '删除记录进入回收站');
+    await evalJs("document.querySelector('#historyList .history-item .btn').click();document.querySelector('#btnTrash').click()");
+    check(await evalJs("BK.listGames(true).every(s=>!s.deletedAt)"), '回收站恢复正文与索引');
+    await evalJs("document.querySelector('#btnHistoryBack').click();document.querySelector('#btnImport').click();document.querySelector('#importText').value=JSON.stringify(BK.exportBackup());document.querySelector('#btnDoImport').click()");
+    check(await evalJs("document.body.dataset.view==='history' && document.querySelector('#toast').textContent==='Backup restored'"), '全量备份从导入入口恢复');
+    await evalJs("document.querySelector('#btnHistoryBack').click();document.querySelector('#btnImport').click();document.querySelector('#importText').value=JSON.stringify(BK.toJSONRecord(BK.createGame({players:[{name:'<img src=x>'},{name:'B'},{name:'C'},{name:'D'}]})));document.querySelector('#btnDoImport').click()");
+    check(await evalJs("!document.querySelector('#turnBanner img') && document.querySelector('#turnBanner').textContent.includes('<img src=x>')"), '玩家名按文本显示，不解释 HTML');
+    await evalJs("document.querySelector('#btnExitGame').click();window.__count=BK.listGames().length;document.querySelector('#btnImport').click();const bad=BK.toJSONRecord(BK.createGame());bad.game.board[0][0]=0;document.querySelector('#importText').value=JSON.stringify(bad);document.querySelector('#btnDoImport').click()");
+    check(await evalJs("BK.listGames().length===window.__count && document.querySelector('#toast').textContent.includes('Snapshot')"), '损坏棋谱拒绝且不新增存档');
+    await evalJs("document.querySelector('#importModal').classList.add('hidden');document.querySelector('#btnHistory').click()");
+    await shot('08-history-reliability.png');
 
     // 结果
     const failed = results.filter((r) => !r.ok);

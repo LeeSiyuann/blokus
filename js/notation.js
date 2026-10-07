@@ -32,15 +32,16 @@
     lines.push('Game: ' + state.id);
     lines.push('Date: ' + state.createdAt);
     lines.push('Mode: ' + state.mode + (state.mode === 'lan' ? ' (LAN)' : ''));
-    lines.push('Players: ' + state.players.map((p) => ID_TO_LETTER[p.id] + '=' + p.name).join(' '));
+    lines.push('Players: ' + state.players.map((p) => ID_TO_LETTER[p.id] + '=' + JSON.stringify(p.name)).join(' '));
+    lines.push('Seats: ' + state.seatIds.join(','));
     if (state.result) {
       lines.push('Result: ' + state.players.map((p) => ID_TO_LETTER[p.id] + '=' + state.result.scores[p.id]).join(' '));
     }
     lines.push('Moves:');
     for (const m of state.moves) {
       const letter = ID_TO_LETTER[state.players[m.player].id];
-      if (m.type === 'pass') {
-        lines.push(m.n + '. ' + letter + ' PASS');
+      if (m.type === 'pass' || m.type === 'resign') {
+        lines.push(m.n + '. ' + letter + ' ' + m.type.toUpperCase());
       } else {
         lines.push(m.n + '. ' + letter + ' ' + m.piece + ' ' + pos(m.anchor) +
           ' R' + pad3(m.rot || 0) + ' M' + (m.mirror ? 1 : 0));
@@ -55,23 +56,33 @@
    */
   function parseText(text) {
     const raw = String(text || '').replace(/\r\n?/g, '\n').trim();
+    if (raw.length > 512 * 1024) return { ok: false, error: 'too_large' };
     if (!raw) return { ok: false, error: 'empty' };
     const lines = raw.split('\n');
     if (lines[0].trim() !== 'BKS1') return { ok: false, error: 'bad_header' };
 
     const meta = { names: {}, result: null };
+    let foundMoves = false;
+    try {
     let i = 1;
     for (; i < lines.length; i++) {
       const line = lines[i].trim();
-      if (/^Moves:\s*$/i.test(line)) { i++; break; }
+      if (/^Moves:\s*$/i.test(line)) { foundMoves = true; i++; break; }
       const mPlayer = /^Players:\s*(.+)$/i.exec(line);
       if (mPlayer) {
-        for (const part of mPlayer[1].trim().split(/\s+/)) {
-          const kv = /^([BYRG])=(.*)$/.exec(part);
-          if (kv) meta.names[kv[1]] = kv[2];
+        const value = mPlayer[1].trim();
+        const pattern = /([BYRG])=("(?:\\.|[^"\\])*"|[^\s]+)/g;
+        let match, end = 0;
+        while ((match = pattern.exec(value))) {
+          if (value.slice(end, match.index).trim() || Object.hasOwn(meta.names, match[1])) throw new Error('invalid_players');
+          meta.names[match[1]] = match[2][0] === '"' ? JSON.parse(match[2]) : match[2];
+          end = pattern.lastIndex;
         }
+        if (value.slice(end).trim() || !end) throw new Error('invalid_players');
         continue;
       }
+      const mSeats = /^Seats:\s*(.*)$/i.exec(line);
+      if (mSeats) { meta.seatIds = mSeats[1].split(',').map(Number); continue; }
       const mRules = /^Rules:\s*(.+)$/i.exec(line);
       if (mRules) { meta.rulesVersion = Number(mRules[1]); continue; }
       const mId = /^Game:\s*(.+)$/i.exec(line); if (mId) { meta.id = mId[1].trim(); continue; }
@@ -79,9 +90,18 @@
       const mMode = /^Mode:\s*(\w+)/i.exec(line); if (mMode) { meta.mode = mMode[1].toLowerCase(); continue; }
     }
 
-    const letters = Object.keys(meta.names).length
-      ? Object.keys(meta.names).sort((a, b) => GLOBAL_ORDER[a] - GLOBAL_ORDER[b])
-      : ['B', 'Y', 'R', 'G'];
+    if (!foundMoves) return { ok: false, error: 'missing_moves' };
+    const namedLetters = Object.keys(meta.names);
+    const seatIds = meta.seatIds || (namedLetters.length
+      ? namedLetters.map((L) => GLOBAL_ORDER[L]).sort((a, b) => a - b)
+      : [0, 1, 2, 3]);
+    if (namedLetters.length && (namedLetters.length !== seatIds.length ||
+        seatIds.some((id) => !namedLetters.some((L) => GLOBAL_ORDER[L] === id)))) throw new Error('invalid_seats');
+    const letters = seatIds.map((id) => Object.keys(GLOBAL_ORDER).find((L) => GLOBAL_ORDER[L] === id));
+    if (meta.mode !== undefined && !['hotseat', 'lan'].includes(meta.mode)) throw new Error('invalid_mode');
+    if (meta.id !== undefined && !/^[a-zA-Z0-9_-]{1,100}$/.test(meta.id)) throw new Error('invalid_id');
+    if (meta.createdAt !== undefined && !Number.isFinite(Date.parse(meta.createdAt))) throw new Error('invalid_time');
+    if (namedLetters.some((L) => typeof meta.names[L] !== 'string' || meta.names[L].length > 120)) throw new Error('invalid_players');
     const players = letters.map((L) => ({
       name: meta.names[L] || LETTER_TO_ID[L],
       controller: 'human'
@@ -93,7 +113,7 @@
     const state = game.createGame({
       rulesVersion: meta.rulesVersion === undefined ? 1 : meta.rulesVersion,
       mode: meta.mode === 'lan' ? 'lan' : 'hotseat',
-      seatCount, players,
+      seatCount, players, seatIds,
       id: meta.id, createdAt: meta.createdAt
     });
     const indexOf = {};
@@ -103,13 +123,13 @@
     for (; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line || line.startsWith('#')) continue;
-      const m = /^(\d+)\.\s*([BYRG])\s+(PASS|([A-Z]\d)\s+([A-T]\d{1,2})\s+R(\d{1,3})\s+M([01]))$/i.exec(line);
+      const m = /^(\d+)\.\s*([BYRG])\s+(PASS|RESIGN|([A-Z]\d)\s+([A-T]\d{1,2})\s+R(\d{1,3})\s+M([01]))$/i.exec(line);
       if (!m) return { ok: false, error: 'bad_move_line', line };
       const letter = m[2].toUpperCase();
       const idx = indexOf[letter];
       if (idx === undefined) return { ok: false, error: 'unknown_player', line };
-      if (/^PASS$/i.test(m[3])) {
-        moves.push({ n: parseInt(m[1], 10), player: idx, type: 'pass' });
+      if (/^(PASS|RESIGN)$/i.test(m[3])) {
+        moves.push({ n: parseInt(m[1], 10), player: idx, type: m[3].toLowerCase() });
       } else {
         const anchor = parsePos(m[5]);
         if (!anchor) return { ok: false, error: 'bad_position', line };
@@ -122,13 +142,10 @@
       }
     }
 
-    let warnings = 0;
-    for (const mv of moves) {
-      const res = game.applyAction(state, mv, { ts: mv.ts });
-      if (!res.ok) warnings++;
-    }
-    state.warnings = warnings;
-    return { ok: true, state, warnings };
+    if (moves.length > seatCount * 22) throw new Error('invalid_moves');
+    const restored = game.rebuild(state, moves);
+    return { ok: true, state: restored, warnings: 0 };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   /** 导出为无损 JSON 记录 */
@@ -143,6 +160,8 @@
 
   /** 从 JSON 记录还原（兼容包装格式与裸 GameState） */
   function fromJSONRecord(obj) {
+    if (obj && obj.format && obj.format !== 'bks-json') throw new Error('invalid_record');
+    if (obj && obj.version !== undefined && obj.version !== 1) throw new Error('unsupported_format_version');
     if (obj && obj.format === 'bks-json' && obj.game) return game.fromJSON(obj.game);
     if (obj && obj.game && obj.game.moves) return game.fromJSON(obj.game);
     return game.fromJSON(obj);

@@ -248,6 +248,9 @@ section('rules version compatibility');
   }
 }
 
+section('reliability');
+require('./reliability.js')(ok,eq);
+
 /* ---------- 结果 ---------- */
 console.log('\n----------------------------------------');
 console.log('通过 ' + passed + ' 项，失败 ' + failed + ' 项');

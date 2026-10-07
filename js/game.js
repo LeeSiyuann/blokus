@@ -40,9 +40,12 @@
   function createGame(opts) {
     const o = opts || {};
     const rulesVersion = recordRulesVersion({ rulesVersion: o.rulesVersion === undefined ? RULES_VERSION : o.rulesVersion });
+    if (o.seatIds !== undefined && (!Array.isArray(o.seatIds) || o.seatIds.length < 2 || o.seatIds.length > 4)) throw new Error('invalid_seats');
     const seatIds = (o.seatIds && o.seatIds.length >= 2 && o.seatIds.length <= 4)
       ? o.seatIds.slice()
       : (SEATS[o.seatCount || 4] || SEATS[4]);
+    if (!seatIds.every((i) => Number.isInteger(i) && i >= 0 && i < 4) || new Set(seatIds).size !== seatIds.length) throw new Error('invalid_seats');
+    if (o.seatCount !== undefined && o.seatCount !== seatIds.length) throw new Error('invalid_seats');
     const seatCount = seatIds.length;
     const now = Date.now();
     const players = seatIds.map((globalIdx, i) => {
@@ -62,8 +65,8 @@
       version: VERSION, rulesVersion,
       id: o.id || makeId(o.createdAt),
       createdAt: o.createdAt || new Date(now).toISOString(),
-      startedAt: o.startedAt || now,
-      updatedAt: now,
+      startedAt: o.startedAt === undefined ? now : o.startedAt,
+      updatedAt: o.startedAt === undefined ? now : o.startedAt,
       finishedAt: null,
       status: 'playing',
       mode: o.mode || 'hotseat',
@@ -73,7 +76,7 @@
       seatIds,
       players,
       turn: 0,
-      turnStartedAt: now,
+      turnStartedAt: o.startedAt === undefined ? now : o.startedAt,
       consecutivePasses: 0,
       board: rules.newBoard(),
       remaining: players.map(() => ALL_PIECE_IDS.slice()),
@@ -87,49 +90,53 @@
     return !state.players[i].passed && (state.remaining[i] || []).length > 0;
   }
 
-  function advanceTurn(state) {
+  function advanceTurn(state, ts) {
     const n = state.players.length;
     for (let step = 1; step <= n; step++) {
       const next = (state.turn + step) % n;
       if (eligible(state, next)) {
         state.turn = next;
-        state.turnStartedAt = Date.now();
+        state.turnStartedAt = ts === undefined ? Date.now() : ts;
         return true;
       }
     }
-    finish(state);
+    finish(state, ts);
     return false;
   }
 
-  function finish(state) {
+  function finish(state, ts) {
     if (state.status === 'finished') return;
     state.status = 'finished';
-    state.finishedAt = Date.now();
+    state.finishedAt = ts === undefined ? Date.now() : ts;
     state.result = rules.computeResult(state);
   }
 
   /**
    * 应用一个动作（人类点击与 AI 决策共用通道）。
    * @param {object} state
-   * @param {object} action { type:'place'|'pass', piece?, anchor?, rot?, mirror? }
-   * @param {object} [opts] { validate:boolean=true, ts:number }
+   * @param {object} action { type:'place'|'pass'|'resign', piece?, anchor?, rot?, mirror? }
+   * @param {object} [opts] { validate:boolean=true, ts:number, elapsedMs:number }
    * @returns {{ok:boolean, code?:string, move?:object}}
    */
   function applyAction(state, action, opts) {
     const o = opts || {};
     if (state.status !== 'playing') return { ok: false, code: 'game_over' };
+    if (!action || typeof action !== 'object') return { ok: false, code: 'bad_action' };
     const p = state.turn;
-    const ts = o.ts || Date.now();
-    const elapsedMs = Math.max(0, ts - (state.turnStartedAt || ts));
+    if (action.player !== undefined && action.player !== p) return { ok: false, code: 'wrong_player' };
+    if (action.n !== undefined && action.n !== state.moves.length + 1) return { ok: false, code: 'wrong_sequence' };
+    const ts = o.ts === undefined ? Date.now() : o.ts;
+    if (!Number.isFinite(ts) || ts < 0 || (o.elapsedMs !== undefined && (!Number.isFinite(o.elapsedMs) || o.elapsedMs < 0))) return { ok: false, code: 'bad_action' };
+    const elapsedMs = o.elapsedMs === undefined ? Math.max(0, ts - state.turnStartedAt) : o.elapsedMs;
 
-    if (action.type === 'pass') {
-      if (o.validate !== false && rules.hasAnyMove(state, p)) return { ok: false, code: 'has_moves' };
+    if (action.type === 'pass' || action.type === 'resign') {
+      if (action.type === 'pass' && o.validate !== false && rules.hasAnyMove(state, p)) return { ok: false, code: 'has_moves' };
       state.players[p].passed = true;
       state.consecutivePasses++;
-      const move = { n: state.moves.length + 1, player: p, type: 'pass', ts, elapsedMs };
+      const move = { n: state.moves.length + 1, player: p, type: action.type, ts, elapsedMs };
       state.moves.push(move);
       state.updatedAt = ts;
-      if (rules.isFinished(state)) finish(state); else advanceTurn(state);
+      if (rules.isFinished(state)) finish(state, ts); else advanceTurn(state, ts);
       return { ok: true, move };
     }
 
@@ -159,7 +166,7 @@
     state.consecutivePasses = 0;
     state.updatedAt = ts;
 
-    if (rules.isFinished(state)) finish(state); else advanceTurn(state);
+    if (rules.isFinished(state)) finish(state, ts); else advanceTurn(state, ts);
     return { ok: true, move };
   }
 
@@ -176,18 +183,22 @@
   function rebuild(source, moves) {
     const state = createGame({
       rulesVersion: recordRulesVersion(source),
-      mode: source.mode, seatCount: source.seatCount, lang: source.lang, sound: source.sound,
+      mode: source.mode, seatCount: source.seatCount || source.players.length, lang: source.lang, sound: source.sound,
       seatIds: source.seatIds,
       id: source.id, createdAt: source.createdAt, startedAt: source.startedAt,
       server: source.server,
       players: source.players.map((p) => ({ name: p.name, controller: p.controller, ai: p.ai }))
     });
-    let warnings = 0;
-    for (const m of (moves || [])) {
-      const res = applyAction(state, m, { ts: m.ts || Date.now() });
-      if (!res.ok) warnings++;
+    for (const [i, m] of (moves || []).entries()) {
+      if (!m || !Number.isInteger(m.player) || !Number.isInteger(m.n)) throw new Error('invalid_move:' + (i + 1));
+      const res = applyAction(state, m, { ts: m.ts === undefined ? state.turnStartedAt : m.ts, elapsedMs: m.elapsedMs });
+      if (!res.ok) throw new Error('invalid_move:' + (i + 1) + ':' + res.code);
     }
-    state.warnings = warnings;
+    state.warnings = 0;
+    if (state.status === 'finished' && Number.isFinite(source.finishedAt)) {
+      state.finishedAt = source.finishedAt;
+      state.result = rules.computeResult(state);
+    }
     return state;
   }
 
@@ -222,25 +233,32 @@
   }
 
   function fromJSON(obj) {
-    if (!obj || typeof obj !== 'object') throw new Error('invalid game record');
-    if (!Array.isArray(obj.players) || obj.players.length < 2 || obj.players.length > 4) throw new Error('invalid players');
-    if (!Array.isArray(obj.moves)) throw new Error('invalid moves');
-    if (obj.moves.length > 5000) throw new Error('too many moves');
-    const state = createGame({
-      rulesVersion: recordRulesVersion(obj),
-      mode: obj.mode, seatCount: obj.seatCount || obj.players.length,
-      seatIds: obj.seatIds,
-      lang: obj.lang, sound: obj.sound, id: obj.id, createdAt: obj.createdAt,
-      startedAt: obj.startedAt, server: obj.server,
-      players: obj.players.map((p) => ({ name: p.name, controller: p.controller, ai: p.ai }))
-    });
-    let warnings = 0;
-    for (const m of obj.moves) {
-      const res = applyAction(state, m, { ts: m.ts || Date.now() });
-      if (!res.ok) warnings++;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('invalid_record');
+    if (obj.version !== undefined && obj.version !== VERSION) throw new Error('unsupported_format_version');
+    if (!Array.isArray(obj.players) || obj.players.length < 2 || obj.players.length > 4 ||
+        obj.players.some((p) => !p || typeof p.name !== 'string' || p.name.length > 120)) throw new Error('invalid_players');
+    if (obj.mode !== undefined && !['hotseat','lan'].includes(obj.mode)) throw new Error('invalid_mode');
+    if (!Array.isArray(obj.moves) || obj.moves.length > obj.players.length * 22) throw new Error('invalid_moves');
+    if (obj.seatIds !== undefined && (!Array.isArray(obj.seatIds) || obj.seatIds.length !== obj.players.length)) throw new Error('invalid_seats');
+    if (obj.id !== undefined && (typeof obj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(obj.id))) throw new Error('invalid_id');
+    if (obj.createdAt !== undefined && !Number.isFinite(Date.parse(obj.createdAt))) throw new Error('invalid_time');
+    for (const key of ['startedAt','updatedAt','finishedAt','turnStartedAt']) {
+      if (obj[key] !== undefined && obj[key] !== null && (!Number.isFinite(obj[key]) || obj[key] < 0)) throw new Error('invalid_time');
     }
-    state.warnings = warnings;
-    if (obj.finishedAt) state.finishedAt = obj.finishedAt;
+    const state = rebuild(obj, obj.moves);
+    if (obj.players.some((p, i) => p.id !== undefined && p.id !== state.players[i].id)) throw new Error('invalid_seats');
+    if (obj.board !== undefined && (!Array.isArray(obj.board) || obj.board.length !== 20 ||
+        obj.board.some((row) => !Array.isArray(row) || row.length !== 20 || row.some((v) => !Number.isInteger(v) || v < -1 || v >= state.seatCount)) ||
+        JSON.stringify(obj.board.flat()) !== JSON.stringify([...state.board]))) throw new Error('snapshot_mismatch');
+    if (obj.remaining !== undefined && JSON.stringify(obj.remaining) !== JSON.stringify(state.remaining)) throw new Error('snapshot_mismatch');
+    if (obj.status !== undefined && obj.status !== state.status) throw new Error('snapshot_mismatch');
+    if (obj.turn !== undefined && obj.turn !== state.turn) throw new Error('snapshot_mismatch');
+    if (obj.updatedAt !== undefined) state.updatedAt = obj.updatedAt;
+    if (obj.turnStartedAt !== undefined) state.turnStartedAt = obj.turnStartedAt;
+    if (state.status === 'finished') {
+      if (obj.finishedAt !== undefined && obj.finishedAt !== null) state.finishedAt = obj.finishedAt;
+      state.result = rules.computeResult(state);
+    }
     return state;
   }
 

@@ -11,8 +11,8 @@
 <header class="topbar">
   <div class="brand"><span class="logo">◧</span><span data-i18n="app.title">角斗士棋 BLOKUS</span></div>
   <div class="top-actions">
-    <button id="langToggle" class="btn ghost">中 / EN</button>
-    <button id="soundToggle" class="btn ghost" aria-pressed="true">🔊</button>
+    <button id="langToggle" data-i18n-title="app.title" class="btn ghost">中 / EN</button>
+    <button id="soundToggle" data-i18n-title="sound.on" class="btn ghost" aria-pressed="true">🔊</button>
   </div>
 </header>
 
@@ -52,11 +52,13 @@
       </button>
     </div>
 
+    <button id="btnResumeLan" class="btn hidden" data-i18n="lan.resume"></button>
+    <p id="storageStatus" class="hint" role="status"></p>
     <div id="lanPanel" class="panel hidden">
       <h3 data-i18n="lan.title">局域网联机</h3>
       <div class="field">
         <label data-i18n="lan.name">你的昵称</label>
-        <input id="lanName" maxlength="12" placeholder="Player">
+        <input id="lanName" maxlength="12" data-i18n-ph="lan.name">
       </div>
       <div class="field">
         <label data-i18n="lan.seatCount">座位数</label>
@@ -121,6 +123,8 @@
         <button id="btnCopyLink" class="btn ghost" data-i18n="common.copy">复制</button>
       </div>
       <p id="lobbyMode" class="hint"></p>
+      <label for="lanAddress" data-i18n="lan.address"></label>
+      <input id="lanAddress" data-i18n-ph="lan.addressHint" aria-describedby="lobbyStatus">
       <div class="players-panel" id="lobbyPlayers"></div>
       <p id="lobbyStatus" class="muted"></p>
       <div class="row end">
@@ -137,6 +141,8 @@
         <canvas id="boardCanvas"></canvas>
       </div>
       <aside class="side">
+        <p id="saveStatus" class="hint" role="status"></p>
+        <p id="netStatus" class="hint" role="status"></p>
         <p id="gameMode" class="hint"></p>
         <div id="turnBanner" class="turn-banner"></div>
         <div id="playersPanel" class="players-panel"></div>
@@ -160,6 +166,7 @@
       <h2 data-i18n="history.title">历史对局</h2>
       <button id="btnHistoryBack" class="btn ghost" data-i18n="common.back">返回</button>
     </div>
+    <div class="row"><button id="btnBackup" class="btn" data-i18n="storage.backup"></button><button id="btnTrash" class="btn" data-i18n="storage.trash" aria-pressed="false"></button></div>
     <div id="historyList" class="history-list"></div>
   </section>
 
@@ -180,11 +187,11 @@
         <div id="replayPlayers" class="players-panel"></div>
         <div class="controls">
           <div class="row">
-            <button id="btnFirst" class="btn" title="⏮">⏮</button>
-            <button id="btnPrev" class="btn">◀</button>
-            <button id="btnPlay" class="btn primary">▶</button>
-            <button id="btnNext" class="btn">▶</button>
-            <button id="btnLast" class="btn" title="⏭">⏭</button>
+            <button id="btnFirst" data-i18n-title="replay.first" class="btn" title="⏮">⏮</button>
+            <button id="btnPrev" data-i18n-title="replay.prev" class="btn">◀</button>
+            <button id="btnPlay" data-i18n-title="replay.play" class="btn primary">▶</button>
+            <button id="btnNext" data-i18n-title="replay.next" class="btn">▶</button>
+            <button id="btnLast" data-i18n-title="replay.last" class="btn" title="⏭">⏭</button>
           </div>
           <input id="replaySlider" class="slider" type="range" min="0" max="0" value="0" step="1">
           <div class="row">

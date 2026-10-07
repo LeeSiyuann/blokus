@@ -46,7 +46,13 @@
     first() { this.pause(); return this.seek(0); }
     last() { this.pause(); return this.seek(this.total); }
 
-    setSpeed(x) { this.speed = Math.max(0.25, Math.min(8, x || 1)); if (this.playing) { this.play(); } return this.speed; }
+    setSpeed(x) {
+      const active = this.playing;
+      if (active) this.pause();
+      this.speed = Math.max(0.25, Math.min(8, x || 1));
+      if (active) this.play();
+      return this.speed;
+    }
 
     play() {
       if (this.playing) return;
