@@ -101,5 +101,5 @@
 - 文件：AGENTS.md、README.md、index.html；js/rules.js、game.js、notation.js、storage.js、i18n.js、ui.js；server/lan-server.js；tests/run-all.js、browser-smoke.js、browser-lan-smoke.js；docs/DESIGN.md、IMPLEMENTATION.md、AI-EXTENSION.md、PLAN.md、plan/PLAN.json、LOG.md；logs/2026-10-07.md。
 - 验证：node tests/run-all.js 620/620；服务端 --port 18345 --selftest OK；浏览器冒烟 35/35；双页面联机端到端 19/19；git diff --check 通过。受限环境启动浏览器超时，经批准在沙箱外执行通过。
 - 界面证据：output/playwright/06-simplified-en.png、07-legacy-replay.png、10-lan-lobby.png、11-lan-game.png；已查看简化模式及旧版回放截图，文字清晰；截图不入库。
-- 提交：待实现提交后回填。
+- 提交：be51391（规则、界面、兼容、测试和文档）；本次收尾文档提交将 M9 置为 done 并回填定位。
 - 遗留：旧局只能回放/导出，请新开局使用修正规则；此前审计发现的其他问题（联机恢复、存储容量、导入完整性等）不属于本次修复范围。
