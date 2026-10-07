@@ -51,7 +51,7 @@
       if (!covers) return { ok: false, code: 'not_corner' };
     }
 
-    let ownEdge = 0, oppEdge = 0;
+    let ownEdge = 0, oppEdge = 0, ownCorner = false;
     for (const [r, c] of cells) {
       for (const [dr, dc] of DIRS) {
         const v = cellAt(state.board, r + dr, c + dc);
@@ -59,9 +59,20 @@
         if (v === playerIndex) ownEdge++;
         else oppEdge++;
       }
+      for (const dr of [-1, 1]) {
+        for (const dc of [-1, 1]) {
+          if (cellAt(state.board, r + dr, c + dc) === playerIndex) ownCorner = true;
+        }
+      }
     }
-    if (oppEdge > 0) return { ok: false, code: 'touch_opponent' };
-    if (!first && ownEdge === 0) return { ok: false, code: 'no_own_edge' };
+    // v1 仅用于解释旧棋谱，不能把旧着法按新规则静默丢弃。
+    if (state.rulesVersion === 1) {
+      if (oppEdge > 0) return { ok: false, code: 'touch_opponent' };
+      if (!first && ownEdge === 0) return { ok: false, code: 'no_own_edge' };
+    } else {
+      if (ownEdge > 0) return { ok: false, code: 'own_edge' };
+      if (!first && !ownCorner) return { ok: false, code: 'no_own_corner' };
+    }
 
     return { ok: true, cells };
   }
@@ -128,11 +139,13 @@
     return null;
   }
 
-  /** 计分：全部出完 +20；若最后一手为单格 I1 则 +15；否则 -剩余格数 */
+  /** 标准计分：全部出完 +15，最后一手为 I1 再加 5；否则 -剩余格数。 */
   function scoreFor(state, playerIndex) {
     const rem = remainingSquares(state, playerIndex);
     if (rem > 0) return -rem;
-    return lastPlacedPiece(state, playerIndex) === 'I1' ? 15 : 20;
+    const singleLast = lastPlacedPiece(state, playerIndex) === 'I1';
+    if (state.rulesVersion === 1) return singleLast ? 15 : 20;
+    return singleLast ? 20 : 15;
   }
 
   function isFinished(state) {
@@ -145,7 +158,7 @@
       const rem = remainingSquares(state, i);
       remaining[p.id] = rem;
       scores[p.id] = scoreFor(state, i);
-      bonus[p.id] = rem === 0 ? (lastPlacedPiece(state, i) === 'I1' ? 15 : 20) : 0;
+      bonus[p.id] = rem === 0 ? scores[p.id] : 0;
     });
     const ranking = state.players.map((p) => p.id)
       .sort((a, b) => scores[b] - scores[a]);

@@ -58,6 +58,7 @@
       updatedAt: g.updatedAt,
       status: g.status,
       mode: g.mode,
+      rulesVersion: g.rulesVersion === undefined ? 1 : g.rulesVersion,
       seatCount: g.seatCount || (g.players ? g.players.length : 0),
       players: (g.players || []).map((p) => p.name),
       colors: (g.players || []).map((p) => p.id),

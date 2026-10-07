@@ -58,21 +58,28 @@ section('rules');
   s0.remaining[0].splice(s0.remaining[0].indexOf('Z5'), 1);
   eq(rules.canPlace(s0, 0, 'Z5', 0, 0, [0, 0]).code, 'piece_used', '已使用的棋子被拒');
 
-  // 与对手边相邻一律禁止（构造非首手局面）
-  const s2 = game.createGame({ seatCount: 2 });
-  s2.board[rules.idx(0, 0)] = 0;
-  s2.board[rules.idx(2, 2)] = 1;
-  eq(rules.canPlace(s2, 1, 'I2', 90, 0, [0, 1]).code, 'touch_opponent', '与对手边相邻被拒');
-
-  // 角接触允许 + 必须与本方边相邻
-  const s3 = game.createGame({ seatCount: 4 });
-  s3.board[rules.idx(10, 10)] = 0;  // 蓝：与候选仅角接触
-  s3.board[rules.idx(12, 10)] = 1;  // 黄：提供本方边邻接
-  const cornerTouch = rules.canPlace(s3, 1, 'I2', 90, 0, [11, 9]); // cells (11,9),(12,9)：与 (12,10) 边相邻、与 (10,10) 仅角接触
-  ok(cornerTouch.ok, '与对手仅角接触允许（且与本方边相邻）');
-  eq(rules.canPlace(s3, 1, 'I2', 0, 0, [11, 10]).code, 'touch_opponent', '与对手边相邻仍被拒');
-  eq(rules.canPlace(s3, 1, 'I1', 0, 0, [15, 15]).code, 'no_own_edge', '未与本方边相邻被拒');
-  eq(rules.canPlace(s3, 1, 'I2', 0, 0, [10, 10]).code, 'overlap', '重叠被拒');
+  // 独立构造局面：预期来自官方规则，不依赖合法着法枚举生成。
+  const s2 = game.createGame({ seatCount: 4 });
+  s2.board[rules.idx(5, 5)] = 0;
+  ok(rules.canPlace(s2, 0, 'I1', 0, 0, [6, 6]).ok, '同色仅角接触合法');
+  eq(rules.canPlace(s2, 0, 'I1', 0, 0, [5, 6]).code, 'own_edge', '同色边接触非法');
+  eq(rules.canPlace(s2, 0, 'I1', 0, 0, [8, 8]).code, 'no_own_corner', '不接触本方角点非法');
+  s2.board[rules.idx(6, 7)] = 1;
+  ok(rules.canPlace(s2, 0, 'I1', 0, 0, [6, 6]).ok, '异色边接触合法');
+  s2.board[rules.idx(7, 7)] = 2;
+  ok(rules.canPlace(s2, 0, 'I1', 0, 0, [6, 6]).ok, '异色角接触合法');
+  s2.board[rules.idx(7, 6)] = 0;
+  eq(rules.canPlace(s2, 0, 'I1', 0, 0, [6, 6]).code, 'own_edge', '同时有本方角与边接触仍非法');
+  eq(rules.canPlace(s2, 0, 'I1', 0, 0, [5, 5]).code, 'overlap', '重叠非法');
+  const corner = game.createGame(); corner.board[rules.idx(0, 1)] = 1;
+  ok(rules.canPlace(corner, 0, 'I1', 0, 0, [0, 0]).ok, '首子允许与异色边接触');
+  for (const [seat, anchor] of [[0,[0,0]], [1,[0,19]], [2,[19,19]], [3,[19,0]]]) {
+    ok(rules.canPlace(game.createGame(), seat, 'I1', 0, 0, anchor).ok, '四个起始角均合法');
+  }
+  const pass = game.createGame();
+  eq(game.applyAction(pass, {type:'pass'}).code, 'has_moves', '存在合法落点不能 PASS');
+  pass.board.fill(1); pass.board[rules.idx(0,0)] = 0;
+  ok(game.applyAction(pass, {type:'pass'}).ok, '被封堵后可 PASS');
 
   // 剩余格数 / 计分
   const s4 = game.createGame({ seatCount: 4 });
@@ -80,9 +87,10 @@ section('rules');
   eq(rules.scoreFor(s4, 0), -89, '未落子得分为 -89');
   s4.remaining[0] = [];
   s4.moves.push({ n: 1, player: 0, type: 'place', piece: 'I1' });
-  eq(rules.scoreFor(s4, 0), 15, '出完且最后一手为 I1 得 +15');
+  eq(rules.scoreFor(s4, 0), 20, '出完且最后一手为 I1 得 +20');
+  eq(rules.computeResult(s4).bonus.blue, 20, '结果奖金与单格收尾分数一致');
   s4.moves = [{ n: 1, player: 0, type: 'place', piece: 'I4' }];
-  eq(rules.scoreFor(s4, 0), 20, '出完且最后一手非 I1 得 +20');
+  eq(rules.scoreFor(s4, 0), 15, '出完且最后一手非 I1 得 +15');
 }
 
 /* ---------- 3. 随机整局模拟 ---------- */
@@ -201,6 +209,43 @@ section('notation');
   const summary = notation.summarize(sim);
   eq(summary.moves, sim.moves.length, '摘要手数正确');
   ok(!!summary.scores, '摘要包含比分');
+}
+
+section('rules version compatibility');
+{
+  const fresh = game.createGame();
+  eq(fresh.rulesVersion, 2, '新局默认标准规则 v2');
+  eq(game.fromJSON(game.toJSON(fresh)).rulesVersion, 2, 'JSON 保留 v2');
+  eq(notation.parseText(notation.toText(fresh)).state.rulesVersion, 2, '文本保留 v2');
+  const old = game.createGame({seatCount:2, rulesVersion:1});
+  for (const [piece,anchor] of [['I1',[0,0]],['I1',[19,19]],['I2',[0,1]]]) {
+    ok(game.applyAction(old,{type:'place',piece,anchor,rot:0,mirror:0}).ok,'旧规则着法可解释');
+  }
+  const raw = game.toJSON(old); delete raw.rulesVersion;
+  const restored = game.fromJSON(raw);
+  eq(restored.rulesVersion, 1, '无版本 JSON 判作旧规则');
+  eq(restored.moves.length, 3, '旧棋谱边接触着法不丢失');
+  eq(restored.warnings, 0, '旧棋谱无静默删步');
+  eq(JSON.stringify([...restored.board]),JSON.stringify([...old.board]),'旧棋盘完整还原');
+  eq(game.replayTo(raw,3).moves.length,3,'旧棋谱可逐步回放');
+  const oldText=notation.toText(old).replace('Rules: 1\n','');
+  eq(notation.parseText(oldText).state.rulesVersion,1,'无版本文本判作旧规则');
+  eq(notation.parseText(oldText).state.moves.length,3,'旧文本保留着法');
+  eq(game.fromJSON(game.toJSON(restored)).rulesVersion,1,'再导出显式保留旧版本');
+  eq(notation.parseText(notation.toText(restored)).state.moves.length,3,'旧文本再导出回读一致');
+  old.remaining[0]=[];old.moves.push({type:'place',player:0,piece:'I1'});
+  eq(rules.scoreFor(old,0),15,'旧版回放保留原计分');
+  let rejected=false;try {game.fromJSON({...raw,rulesVersion:99});}catch(e){rejected=true;}
+  ok(rejected,'拒绝未知 JSON 规则版本');
+  ok(!notation.parseText(notation.toText(fresh).replace('Rules: 2','Rules: 99')).ok,'拒绝未知文本规则版本');
+  for (const count of [2,3]) {
+    const s=game.createGame({seatCount:count});
+    playRandom(s,makeRng(count));
+    eq(s.status,'finished',count+' 人简化局可终局');
+    const back=notation.parseText(notation.toText(s));
+    eq(back.warnings,0,count+' 人简化局文本无告警');
+    eq(JSON.stringify(game.toJSON(back.state).board),JSON.stringify(game.toJSON(s).board),count+' 人简化局文本还原棋盘');
+  }
 }
 
 /* ---------- 结果 ---------- */

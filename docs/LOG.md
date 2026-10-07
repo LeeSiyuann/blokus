@@ -92,3 +92,14 @@
 - 提交：本次提交
 - 遗留：无（M0–M8 全部完成）；后续 PR 等待用户明确提示
 
+
+### OP-011 修正规则并标注简化模式（M9）
+
+- 时间：2026-10-07（Asia/Shanghai）
+- 操作：按 Mattel 官方说明书修正同色角接触、禁止同色边接触、异色接触不限；全部出完 +15、单格收尾总计 +20。单机/联机 2、3 人标注简化模式，4 人标注标准模式，中英同步。
+- 兼容：新局规则版本 2；JSON rulesVersion 与 BKS1 Rules 字段随记录传递；缺省/版本 1 使用旧解释器，仅从 UI 回放/导出，保留原着法与计分，未知版本拒绝。离开回放时暂停，避免旧回放覆盖新对局。
+- 文件：AGENTS.md、README.md、index.html；js/rules.js、game.js、notation.js、storage.js、i18n.js、ui.js；server/lan-server.js；tests/run-all.js、browser-smoke.js、browser-lan-smoke.js；docs/DESIGN.md、IMPLEMENTATION.md、AI-EXTENSION.md、PLAN.md、plan/PLAN.json、LOG.md；logs/2026-10-07.md。
+- 验证：node tests/run-all.js 620/620；服务端 --port 18345 --selftest OK；浏览器冒烟 35/35；双页面联机端到端 19/19；git diff --check 通过。受限环境启动浏览器超时，经批准在沙箱外执行通过。
+- 界面证据：output/playwright/06-simplified-en.png、07-legacy-replay.png、10-lan-lobby.png、11-lan-game.png；已查看简化模式及旧版回放截图，文字清晰；截图不入库。
+- 提交：待实现提交后回填。
+- 遗留：旧局只能回放/导出，请新开局使用修正规则；此前审计发现的其他问题（联机恢复、存储容量、导入完整性等）不属于本次修复范围。

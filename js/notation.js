@@ -28,6 +28,7 @@
   function toText(state) {
     const lines = [];
     lines.push('BKS1');
+    lines.push('Rules: ' + game.recordRulesVersion(state));
     lines.push('Game: ' + state.id);
     lines.push('Date: ' + state.createdAt);
     lines.push('Mode: ' + state.mode + (state.mode === 'lan' ? ' (LAN)' : ''));
@@ -71,6 +72,8 @@
         }
         continue;
       }
+      const mRules = /^Rules:\s*(.+)$/i.exec(line);
+      if (mRules) { meta.rulesVersion = Number(mRules[1]); continue; }
       const mId = /^Game:\s*(.+)$/i.exec(line); if (mId) { meta.id = mId[1].trim(); continue; }
       const mDate = /^Date:\s*(.+)$/i.exec(line); if (mDate) { meta.createdAt = mDate[1].trim(); continue; }
       const mMode = /^Mode:\s*(\w+)/i.exec(line); if (mMode) { meta.mode = mMode[1].toLowerCase(); continue; }
@@ -84,7 +87,11 @@
       controller: 'human'
     }));
     const seatCount = players.length;
+    if (meta.rulesVersion !== undefined && meta.rulesVersion !== 1 && meta.rulesVersion !== game.RULES_VERSION) {
+      return { ok: false, error: 'unsupported_rules_version' };
+    }
     const state = game.createGame({
+      rulesVersion: meta.rulesVersion === undefined ? 1 : meta.rulesVersion,
       mode: meta.mode === 'lan' ? 'lan' : 'hotseat',
       seatCount, players,
       id: meta.id, createdAt: meta.createdAt

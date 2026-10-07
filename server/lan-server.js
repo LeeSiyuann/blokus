@@ -344,6 +344,12 @@ async function selftest(server, port) {
   const legalSecond = await post('/api/rooms/' + roomId + '/move', { token: joined.body.token, piece: 'I1', anchor: [19, 19], rot: 0, mirror: 0 });
   check(legalSecond.body.ok === true, 'second player first move');
 
+  const ownEdge = await post('/api/rooms/' + roomId + '/move', { token: created.body.token, piece: 'I2', anchor: [0, 1], rot: 0, mirror: 0 });
+  check(ownEdge.body.error === 'own_edge', 'same-color edge rejected');
+  const ownCorner = await post('/api/rooms/' + roomId + '/move', { token: created.body.token, piece: 'I2', anchor: [1, 1], rot: 0, mirror: 0 });
+  check(ownCorner.body.ok === true, 'same-color corner accepted');
+  const record = await fetch(base + '/api/rooms/' + roomId + '/record').then((r) => r.json());
+  check(record.record.game.rulesVersion === 2, 'LAN uses standard rules v2');
   return failures;
 }
 

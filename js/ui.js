@@ -43,6 +43,7 @@
 
   function showView(name) {
     document.body.dataset.view = name;
+    if (name !== 'replay' && app.replay && app.replay.playing) app.replay.pause();
     if (name === 'game') setTimeout(() => renderBoard(), 30);
     if (name === 'replay') setTimeout(() => renderReplayBoard(), 30);
   }
@@ -50,6 +51,11 @@
   function errText(code) { return t('err.' + code) || code; }
   function colorOf(playerId) { return (COLORS[playerId] || COLORS.blue).fill; }
   function isFileProtocol() { return location.protocol === 'file:'; }
+
+  function modeLabel(source) {
+    if (BKNS.recordRulesVersion(source) === 1) return t('mode.legacy');
+    return source.seatCount === 4 ? t('mode.standard') : t('mode.simple', { n: source.seatCount });
+  }
 
   function defaultNames() {
     const base = t('app.title') === 'BLOKUS' ? DEFAULT_NAMES_EN : DEFAULT_NAMES_ZH;
@@ -67,7 +73,7 @@
       if (rec && rec.game && rec.game.status === 'playing') {
         btn.disabled = false;
         const g = rec.game;
-        desc.textContent = g.players.map((p) => p.name).join(' / ') + ' · ' + (g.moves || []).length + ' ' + t('history.moves');
+        desc.textContent = modeLabel(g) + ' · ' + g.players.map((p) => p.name).join(' / ') + ' · ' + (g.moves || []).length + ' ' + t('history.moves');
         return;
       }
     }
@@ -140,7 +146,7 @@
   }
 
   function canLocalAct() {
-    if (!app.state || app.state.status !== 'playing') return false;
+    if (!app.state || app.state.status !== 'playing' || app.state.rulesVersion === 1) return false;
     if (app.state.mode !== 'lan') return true;
     return app.state.turn === app.lan.seat;
   }
@@ -236,7 +242,7 @@
   }
 
   function doUndo() {
-    if (!app.state || app.state.mode === 'lan') return;
+    if (!app.state || app.state.mode === 'lan' || app.state.rulesVersion === 1) return;
     const res = BKNS.undo(app.state);
     if (!res.ok) { toast(errText(res.code)); return; }
     BKNS.Sound.play('click');
@@ -248,6 +254,7 @@
   function renderGame() {
     if (!app.state) return;
     const s = app.state;
+    $('#gameMode').textContent = modeLabel(s);
     const turnIdx = s.status === 'finished' ? null : s.turn;
     const banner = $('#turnBanner');
     if (s.status === 'finished') {
@@ -420,7 +427,7 @@
     BKNS.saveRecord(BKNS.toJSONRecord(state));
     closeModal('importModal');
     toast(t('toast.importOk'));
-    if (state.status === 'finished') {
+    if (state.status === 'finished' || state.rulesVersion === 1) {
       openReplay(BKNS.toJSON(state));
     } else {
       app.state = state;
@@ -451,7 +458,7 @@
       sub.className = 'history-sub';
       const d = new Date(item.updatedAt || item.createdAt);
       sub.textContent = d.toLocaleString() + ' · ' + t('history.mode_' + (item.mode || 'hotseat')) + ' · ' +
-        item.moves + ' ' + t('history.moves') + ' · ' + t('history.status_' + (item.status || 'playing'));
+        modeLabel(item) + ' · ' + item.moves + ' ' + t('history.moves') + ' · ' + t('history.status_' + (item.status || 'playing'));
       meta.appendChild(title); meta.appendChild(sub);
       if (item.scores) {
         const scoreLine = document.createElement('div');
@@ -488,7 +495,7 @@
   function openRecord(id) {
     const rec = BKNS.loadRecord(id);
     if (!rec || !rec.game) return;
-    if (rec.game.status === 'playing') {
+    if (rec.game.status === 'playing' && BKNS.recordRulesVersion(rec.game) !== 1) {
       app.state = BKNS.fromJSON(rec.game);
       showView('game');
       renderGame();
@@ -504,7 +511,9 @@
     if (app.replay) app.replay.dispose();
     app.replay = new BKNS.ReplayPlayer(gameJson, {
       onUpdate: (state, index, total, playing) => {
+        if (document.body.dataset.view !== 'replay') return;
         app.state = state; // 复用渲染/玩家面板
+        $('#replayMode').textContent = modeLabel(state);
         $('#replaySlider').max = String(total);
         $('#replaySlider').value = String(index);
         $('#btnPlay').textContent = playing ? '⏸' : '▶';
@@ -589,6 +598,7 @@
     const host = $('#lobbyPlayers');
     host.innerHTML = '';
     const total = Math.max(app.lan.totalSeats || app.lan.seats.length, app.lan.seats.length);
+    $('#lobbyMode').textContent = modeLabel({ rulesVersion: BKNS.RULES_VERSION, seatCount: total });
     const seatMap = BKNS.SEATS[total] || BKNS.SEATS[4];
     for (let i = 0; i < total; i++) {
       const seat = app.lan.seats.find((s) => s.slot === i);
@@ -673,7 +683,10 @@
       applyI18n();
       document.title = t('app.title');
       updateTopBar();
-      if (app.state) { renderGame(); }
+      if (document.body.dataset.view === 'replay' && app.replay) app.replay.emit();
+      else if (document.body.dataset.view === 'game' && app.state) renderGame();
+      if (document.body.dataset.view === 'history') renderHistory();
+      if (document.body.dataset.view === 'lobby') renderLobby();
       refreshLauncher();
       buildNameInputs(selectedSeatCount());
     });
@@ -699,9 +712,7 @@
       if (!id) { toast(t('launcher.noSave')); return; }
       const rec = BKNS.loadRecord(id);
       if (!rec || !rec.game) { toast(t('launcher.noSave')); return; }
-      app.state = BKNS.fromJSON(rec.game);
-      showView('game');
-      renderGame();
+      openRecord(id);
     });
     $('#btnHistory').addEventListener('click', () => { renderHistory(); showView('history'); });
     $('#btnImport').addEventListener('click', () => { openModal('importModal'); });

@@ -1,20 +1,20 @@
 {
   "project": "blokus",
-  "updatedAt": "2026-10-06",
+  "updatedAt": "2026-10-07",
   "rules": {
     "protocol": "每次操作：登记(doing) -> 实现 -> 测试 -> 文档 -> 日志 -> commit -> 置 done 并写 commit hash",
     "prPolicy": "仅当用户明确提示时创建 PR/MR，由用户合入"
   },
   "milestones": [
-    { "id": "M0", "title": "仓库与规范", "status": "done", "commit": "b08b804", "deliverables": ["AGENTS.md", "README.md", "docs/PLAN.md", "docs/DESIGN.md", "docs/AI-EXTENSION.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "docs/plan/PLAN.json"] },
-    { "id": "M1", "title": "规则引擎", "status": "done", "commit": "6a701d8", "deliverables": ["js/pieces.js", "js/rules.js", "js/game.js", "js/notation.js", "tests/run-all.js"] },
-    { "id": "M2", "title": "启动器与界面骨架", "status": "done", "commit": "d5227b6", "deliverables": ["index.html", "styles.css", "js/i18n.js", "js/sound.js", "js/ui.js"] },
-    { "id": "M3", "title": "单机对局与存档", "status": "done", "commit": "d5227b6", "deliverables": ["js/render.js", "js/storage.js"] },
-    { "id": "M4", "title": "历史与回放", "status": "done", "commit": "d5227b6", "deliverables": ["js/replay.js"] },
-    { "id": "M5", "title": "棋谱导入导出", "status": "done", "commit": "d5227b6", "deliverables": ["js/notation.js"] },
-    { "id": "M6", "title": "局域网联机", "status": "done", "commit": "d5227b6", "deliverables": ["server/lan-server.js", "js/net.js", "launcher.cmd", "scripts/start-lan.sh"] },
-    { "id": "M7", "title": "打磨与文档", "status": "done", "commit": "b890501", "deliverables": ["README.md", "docs/IMPLEMENTATION.md", "docs/LOG.md", "AGENTS.md"] },
-    { "id": "M8", "title": "GitHub 远程仓库", "status": "done", "commit": "0260932", "deliverables": ["https://github.com/LeeSiyuann/blokus"], "note": "用户创建空仓库后本地 git push 完成，9 个提交全部同步（Git Credential Manager 浏览器授权）" }
+    {"id":"M0","title":"仓库与规范","status":"done","commit":"b08b804","deliverables":["AGENTS.md","README.md","docs/PLAN.md","docs/DESIGN.md","docs/AI-EXTENSION.md","docs/IMPLEMENTATION.md","docs/LOG.md","docs/plan/PLAN.json"]},
+    {"id":"M1","title":"规则引擎","status":"done","commit":"6a701d8","deliverables":["js/pieces.js","js/rules.js","js/game.js","js/notation.js","tests/run-all.js"]},
+    {"id":"M2","title":"启动器与界面骨架","status":"done","commit":"d5227b6","deliverables":["index.html","styles.css","js/i18n.js","js/sound.js","js/ui.js"]},
+    {"id":"M3","title":"单机对局与存档","status":"done","commit":"d5227b6","deliverables":["js/render.js","js/storage.js"]},
+    {"id":"M4","title":"历史与回放","status":"done","commit":"d5227b6","deliverables":["js/replay.js"]},
+    {"id":"M5","title":"棋谱导入导出","status":"done","commit":"d5227b6","deliverables":["js/notation.js"]},
+    {"id":"M6","title":"局域网联机","status":"done","commit":"d5227b6","deliverables":["server/lan-server.js","js/net.js","launcher.cmd","scripts/start-lan.sh"]},
+    {"id":"M7","title":"打磨与文档","status":"done","commit":"b890501","deliverables":["README.md","docs/IMPLEMENTATION.md","docs/LOG.md","AGENTS.md"]},
+    {"id":"M8","title":"GitHub 远程仓库","status":"done","commit":"0260932","deliverables":["https://github.com/LeeSiyuann/blokus"],"note":"用户创建空仓库后本地 git push 完成，9 个提交全部同步（Git Credential Manager 浏览器授权）"},
+    {"id":"M9","title":"修正标准规则与计分，标注简化模式并兼容旧棋谱","status":"doing","commit":null,"deliverables":["js/rules.js","js/game.js","js/notation.js","js/ui.js","js/i18n.js","index.html","tests","docs"]}
   ]
 }
-

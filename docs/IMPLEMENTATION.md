@@ -97,10 +97,10 @@ npm run test:all                                  # 单元 + 服务端自检 + �
 
 | 项目 | 结果 |
 | --- | --- |
-| node tests/run-all.js | 通过 491 / 491 |
+| node tests/run-all.js | 通过 620 / 620 |
 | node server/lan-server.js --port 18345 --selftest | OK |
-| node tests/browser-smoke.js | 通过 25 / 25（截图见 output/playwright/） |
-| node tests/browser-lan-smoke.js | 通过 18 / 18 |
+| node tests/browser-smoke.js | 通过 35 / 35（截图见 output/playwright/） |
+| node tests/browser-lan-smoke.js | 通过 19 / 19 |
 
 浏览器手测清单（每次发版前）：
 
@@ -110,9 +110,18 @@ npm run test:all                                  # 单元 + 服务端自检 + �
 4. 导出：文本棋谱 + JSON 下载/复制 → 清空后导入还原 → 回放一致；
 5. 联机：两个浏览器窗口（不同 profile）同房对局，验证轮次锁定与断线重连。
 
+### 规则修复验证（M9）
+
+- 独立手工局面验证同色角接触、边接触、异色接触、首子、重叠、PASS 和 +15/+20 奖励。
+- 2/3/4 人完整模拟，标准棋谱往返、旧 JSON/BKS1 无版本记录回放与原计分保持、未知规则版本拒绝。
+- 服务端自检额外验证同色边接触拒绝、角接触接受、规则版本为 2。
+- 浏览器检查中英简化模式标签、历史标签、旧记录只读回放和离开自动回放后新局不被覆盖。
+- 浏览器在受限环境启动超时；经批准在沙箱外运行通过。截图：output/playwright/06-simplified-en.png、07-legacy-replay.png、10-lan-lobby.png、11-lan-game.png。
+
 ## 6. 数据与迁移
 
-- 所有数据存于浏览器 localStorage，键名见 DESIGN 第 7 节；`version` 字段用于迁移。
+- 浏览器存档位于 localStorage，键名见 DESIGN 第 7 节；JSON 格式 version 仍为 1，规则版本 rulesVersion 为 2。
+- 缺省 rulesVersion 或值为 1 的旧记录只回放/导出，保留旧着法与旧计分；未知规则版本拒绝。新棋谱不得用旧应用导入。
 - 清除浏览器数据会丢失存档，请定期用「导出 JSON」备份；
 - 导入时执行结构校验（20×20 棋盘、moves ≤ 5000、玩家 2–4 人），不合法则报错拒绝。
 

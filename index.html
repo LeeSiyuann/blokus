@@ -61,9 +61,9 @@
       <div class="field">
         <label data-i18n="lan.seatCount">座位数</label>
         <select id="lanSeats">
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4" selected>4</option>
+          <option value="2" data-i18n="mode.two">2 人 · 简化模式</option>
+          <option value="3" data-i18n="mode.three">3 人 · 简化模式</option>
+          <option value="4" selected data-i18n="mode.four">4 人 · 标准模式</option>
         </select>
       </div>
       <div class="row">
@@ -77,6 +77,7 @@
       <div class="row">
         <button id="btnJoinRoom" class="btn" data-i18n="lan.join">加入房间</button>
       </div>
+      <p class="hint" data-i18n="mode.hint"></p>
       <p class="hint" data-i18n="lan.hint">创建后把地址与房间码发给同网络的玩家。</p>
     </div>
 
@@ -91,12 +92,13 @@
       <div class="row">
         <span class="muted" data-i18n="setup.players">玩家人数</span>
         <div class="seg" id="seatSeg">
-          <button class="seg-btn" data-seats="2">2</button>
-          <button class="seg-btn" data-seats="3">3</button>
-          <button class="seg-btn active" data-seats="4">4</button>
+          <button class="seg-btn" data-seats="2" data-i18n="mode.two">2 人 · 简化模式</button>
+          <button class="seg-btn" data-seats="3" data-i18n="mode.three">3 人 · 简化模式</button>
+          <button class="seg-btn active" data-seats="4" data-i18n="mode.four">4 人 · 标准模式</button>
         </div>
       </div>
     </div>
+    <p class="hint" data-i18n="mode.hint"></p>
     <div class="names" id="nameList"></div>
     <p class="muted" data-i18n="setup.nameHint">可修改昵称，留空使用默认名。</p>
     <div class="row end">
@@ -118,6 +120,7 @@
         <code id="lobbyLink">-</code>
         <button id="btnCopyLink" class="btn ghost" data-i18n="common.copy">复制</button>
       </div>
+      <p id="lobbyMode" class="hint"></p>
       <div class="players-panel" id="lobbyPlayers"></div>
       <p id="lobbyStatus" class="muted"></p>
       <div class="row end">
@@ -134,6 +137,7 @@
         <canvas id="boardCanvas"></canvas>
       </div>
       <aside class="side">
+        <p id="gameMode" class="hint"></p>
         <div id="turnBanner" class="turn-banner"></div>
         <div id="playersPanel" class="players-panel"></div>
         <div id="tray" class="tray"></div>
@@ -171,6 +175,7 @@
     <div class="replay-layout">
       <div class="board-wrap"><canvas id="replayCanvas"></canvas></div>
       <aside class="side">
+        <p id="replayMode" class="hint"></p>
         <div id="replayInfo" class="turn-banner"></div>
         <div id="replayPlayers" class="players-panel"></div>
         <div class="controls">

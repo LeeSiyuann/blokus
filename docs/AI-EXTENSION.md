@@ -7,7 +7,7 @@
 
 ### 1.1 设计原则
 
-1. **人类与 AI 走同一条通道**：AI 产出的 `Action` 与人类点击产生的 `Action` 完全同构，都经 `game.applyMove()` 校验，
+1. **人类与 AI 走同一条通道**：AI 产出的 `Action` 与人类点击产生的 `Action` 完全同构，都经 `game.applyAction()` 校验，
    因此 AI 对局天然可存档、可回放、可导出棋谱。
 2. **只读上下文**：AI 拿到的是 `ctx` 只读快照（含合法着法枚举器），不能直接改状态；保证引擎单点事实来源。
 3. **可复现**：`options.seed` 注入确定性随机源，同一 seed + 同一对局 → 同一落子序列。
@@ -20,7 +20,7 @@
 ui.js 轮询到 currentPlayer.controller === 'ai'
    └─ AIController.onTurn(ctx)            // ctx 只读，含合法着法枚举器
         └─ 返回 Action { type:'place', piece, anchor, rot, mirror } | { type:'pass' }
-             └─ game.applyMove(state, action)   // 与人类同一校验通道
+             └─ game.applyAction(state, action)   // 与人类同一校验通道
                   ├─ 合法 → 入 moves[]、存档、渲染、音效
                   └─ 非法 → console.warn + 回退到 safeAction()（见 3.3）
 ```
@@ -35,6 +35,10 @@ js/ai/worker.js       Web Worker 入口（可选）
 ```
 未实现前 `js/ai/` 目录可不存在；`game.js` 只依赖下方契约，不依赖具体文件。
 
+当前规则版本为 2：同色必须角接触且不得边接触，异色接触不限；全出完 +15，I1 收尾总计 +20。
+2/3 人为每人一色的简化模式；AI 应使用 state.seatCount / players，不假设始终有四个席位。
+旧规则版本 1 仅供历史回放，不应挂载 AI 继续对局；ctx 和控制器注册表仍属于预留接口。
+
 ## 2. 接口一览
 
 | 接口 | 形态 | 用途 | 状态 |
@@ -45,7 +49,7 @@ js/ai/worker.js       Web Worker 入口（可选）
 | AIController.onTurn(ctx) | 方法 → Promise&lt;Action&gt; | 轮到该 AI 时调用 | 预留 |
 | AIController.onGameEnd(result) | 方法 → void | 终局通知，可自我评估 | 预留 |
 | AIController.dispose() | 方法 → void | 释放资源（Worker/定时器） | 预留 |
-| BK.getLegalActions(state, playerIndex) | 函数 → Action[] | 合法着法枚举（含 pass） | v1 提供 |
+| BK.allLegalActions(state, playerIndex) | 函数 → Action[] | 合法着法枚举（含 pass） | v1 提供 |
 | BK.evaluateBoard(state, playerIndex) | 函数 → number | 基础局面评估（留给 AI 覆盖） | 预留 |
 
 ## 3. 参数列表
@@ -151,7 +155,7 @@ js/ai/worker.js       Web Worker 入口（可选）
 | 测试 | 内容 |
 | --- | --- |
 | 确定性 | 同 seed 两次运行，着法序列完全一致 |
-| 合法性 | 1000 局随机对局中 AI 着法全部通过 `game.applyMove` 校验 |
+| 合法性 | 1000 局随机对局中 AI 着法全部通过 `game.applyAction` 校验 |
 | 终止性 | 每步在 `timeLimitMs * 1.5` 内返回；无死循环 |
 | 回放一致性 | AI 对局导出棋谱后重新导入，回放结果与原局一致 |
 | 性能 | 4×AI 对局完整跑完 &lt; 3 分钟（难度 3、单步 1s 上限） |

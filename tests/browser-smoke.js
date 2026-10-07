@@ -119,6 +119,7 @@ async function main() {
       return r.result.value;
     };
     const shot = async (name) => {
+      await sleep(250); // 等待视图淡入结束，再保存验收截图。
       const r = await cdp.send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(OUT_DIR, name), Buffer.from(r.data, 'base64'));
     };
@@ -149,6 +150,7 @@ async function main() {
     await evalJs("document.querySelector('#langToggle').click()");
     check(await evalJs("document.querySelector('#btnSingle .card-title').textContent") === '单机热座', '切回中文生效');
 
+    check(await evalJs("document.querySelector('#lanSeats option').textContent.includes('简化模式')"), '联机座位标注简化模式');
     // 进入单机 4 人局
     await evalJs("document.querySelector('#btnSingle').click()");
     await sleep(120);
@@ -158,6 +160,8 @@ async function main() {
     check(await evalJs("document.body.dataset.view === 'game'"), '进入对局视图');
     check((await evalJs("document.querySelectorAll('#tray .tray-piece').length")) === 21, '托盘显示 21 枚棋子');
     check((await evalJs("document.querySelectorAll('#playersPanel .player-chip').length")) === 4, '显示 4 名玩家');
+    check(await evalJs("document.querySelector('#gameMode').textContent.includes('标准模式')"), '四人对局标注标准模式');
+    check(await evalJs("(() => { const g=BK.createGame(); g.board[0]=0; return BK.canPlace(g,0,'I2',0,0,[1,1]).ok && BK.canPlace(g,0,'I2',0,0,[0,1]).code==='own_edge'; })()"), '浏览器共享引擎执行角接触规则');
     await shot('02-game-start.png');
 
     // 选中 I1，点击棋盘 A1
@@ -247,6 +251,31 @@ async function main() {
     await sleep(150);
     check(await evalJs("document.querySelector('#replaySlider').value") === '1', '回放可步进');
     await shot('05-replay.png');
+
+    // 简化模式标签与旧棋谱回放。
+    await evalJs("document.querySelector('#btnPlay').click()");
+    await evalJs("document.querySelector('#btnReplayBack').click(); document.querySelector('#btnHistoryBack').click(); document.querySelector('#btnSingle').click(); document.querySelector('#seatSeg .seg-btn').click(); document.querySelector('#btnSetupStart').click()");
+    await sleep(1000);
+    check(await evalJs("document.querySelectorAll('#playersPanel .player-chip').length===2"), '离开自动回放后新局不被覆盖');
+    check(await evalJs("document.querySelector('#gameMode').textContent==='2 人简化模式'"), '双人对局简化模式中文标签');
+    await evalJs("document.querySelector('#langToggle').click()");
+    check(await evalJs("document.querySelector('#gameMode').textContent==='2-player simplified mode'"), '双人对局简化模式英文标签');
+    await shot('06-simplified-en.png');
+    await evalJs("document.querySelector('#btnExitGame').click(); document.querySelector('#langToggle').click(); document.querySelector('#btnHistory').click()");
+    check(await evalJs("document.querySelector('#historyList').textContent.includes('2 人简化模式')"), '历史显示简化模式');
+    await evalJs(`(() => {
+      const g=BK.createGame({seatCount:2,rulesVersion:1});
+      for(const [piece,anchor] of [['I1',[0,0]],['I1',[19,19]],['I2',[0,1]]]) BK.applyAction(g,{type:'place',piece,anchor});
+      const rec=BK.toJSONRecord(g); delete rec.game.rulesVersion;
+      document.querySelector('#btnHistoryBack').click();document.querySelector('#btnImport').click();
+      document.querySelector('#importText').value=JSON.stringify(rec);document.querySelector('#btnDoImport').click();
+    })()`);
+    check(await evalJs("document.body.dataset.view==='replay' && document.querySelector('#replayMode').textContent.includes('仅供回放')"), '旧棋谱仅供回放并显示警告');
+    await evalJs("document.querySelector('#btnLast').click()");
+    check(await evalJs("document.querySelector('#replaySlider').value==='3'"), '旧棋谱三步完整保留');
+    await shot('07-legacy-replay.png');
+    await evalJs("document.querySelector('#btnReplayBack').click(); document.querySelector('#btnHistoryBack').click(); document.querySelector('#btnContinue').click()");
+    check(await evalJs("document.body.dataset.view==='replay'"), '继续旧存档也进入只读回放');
 
     // 结果
     const failed = results.filter((r) => !r.ok);

@@ -19,6 +19,12 @@
     { id: 'green', corner: [19, 0] }
   ];
   const VERSION = 1;
+  const RULES_VERSION = 2;
+  function recordRulesVersion(source) {
+    const value = source.rulesVersion === undefined ? 1 : source.rulesVersion;
+    if (value !== 1 && value !== RULES_VERSION) throw new Error('unsupported_rules_version');
+    return value;
+  }
 
   function makeId(date) {
     const d = date ? new Date(date) : new Date();
@@ -29,10 +35,11 @@
 
   /**
    * 创建对局。
-   * @param {object} opts { mode, seatCount, players:[{name,controller,ai}], lang, sound, id, createdAt, server }
+   * @param {object} opts { mode, seatCount, players:[{name,controller,ai}], lang, sound, id, createdAt, server, rulesVersion=2（1 仅用于旧棋谱解释） }
    */
   function createGame(opts) {
     const o = opts || {};
+    const rulesVersion = recordRulesVersion({ rulesVersion: o.rulesVersion === undefined ? RULES_VERSION : o.rulesVersion });
     const seatIds = (o.seatIds && o.seatIds.length >= 2 && o.seatIds.length <= 4)
       ? o.seatIds.slice()
       : (SEATS[o.seatCount || 4] || SEATS[4]);
@@ -52,7 +59,7 @@
       };
     });
     return {
-      version: VERSION,
+      version: VERSION, rulesVersion,
       id: o.id || makeId(o.createdAt),
       createdAt: o.createdAt || new Date(now).toISOString(),
       startedAt: o.startedAt || now,
@@ -168,6 +175,7 @@
   /** 由配置 + moves 重建完整状态（回放 / 导入 / 悔棋 共用） */
   function rebuild(source, moves) {
     const state = createGame({
+      rulesVersion: recordRulesVersion(source),
       mode: source.mode, seatCount: source.seatCount, lang: source.lang, sound: source.sound,
       seatIds: source.seatIds,
       id: source.id, createdAt: source.createdAt, startedAt: source.startedAt,
@@ -196,7 +204,7 @@
       board.push(row);
     }
     return {
-      version: VERSION,
+      version: VERSION, rulesVersion: recordRulesVersion(state),
       id: state.id, createdAt: state.createdAt, startedAt: state.startedAt,
       updatedAt: state.updatedAt, finishedAt: state.finishedAt,
       status: state.status, mode: state.mode, lang: state.lang, sound: state.sound,
@@ -219,6 +227,7 @@
     if (!Array.isArray(obj.moves)) throw new Error('invalid moves');
     if (obj.moves.length > 5000) throw new Error('too many moves');
     const state = createGame({
+      rulesVersion: recordRulesVersion(obj),
       mode: obj.mode, seatCount: obj.seatCount || obj.players.length,
       seatIds: obj.seatIds,
       lang: obj.lang, sound: obj.sound, id: obj.id, createdAt: obj.createdAt,
@@ -250,7 +259,7 @@
   }
 
   const api = {
-    VERSION, SEATS, PLAYER_META, makeId, createGame, applyAction, undo, rebuild, replayTo,
+    VERSION, RULES_VERSION, recordRulesVersion, SEATS, PLAYER_META, makeId, createGame, applyAction, undo, rebuild, replayTo,
     toJSON, fromJSON, turnInfo, finish, eligible, advanceTurn
   };
 

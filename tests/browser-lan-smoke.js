@@ -183,6 +183,7 @@ async function main() {
       "(() => { const c = [...document.querySelectorAll('#playersPanel .player-chip')].find(x => x.textContent.includes(" +
       JSON.stringify(name) + ")); return c ? c.textContent : ''; })()");
 
+    check(await host.evalJs("document.querySelector('#gameMode').textContent==='2 人简化模式'"), '联机双人局标注简化模式');
     // 房主落子 A1
     await host.evalJs("[...document.querySelectorAll('#tray .tray-piece')].find(b => b.dataset.piece === 'I1').click()");
     const p1 = await host.cellPoint(0, 0);
