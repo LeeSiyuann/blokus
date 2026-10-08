@@ -85,7 +85,9 @@ function readBody(req) {
     req.on('end', () => {
       if (!chunks.length) return resolve({});
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('bad_json');
+        resolve(body);
       } catch (e) {
         reject(new Error('bad_json'));
       }
@@ -254,7 +256,7 @@ async function handleApi(req, res, url) {
   if (parts[1] !== 'rooms') return false;
   if (parts.length === 2 && method === 'POST') {
     const b = await readBody(req);
-    const seatCount = Number(b.seatCount || 4);
+    const seatCount = b.seatCount === undefined ? 4 : b.seatCount;
     if (![2, 3, 4].includes(seatCount)) {
       json(res, 400, {ok: false, error: 'invalid_seats'});
       return true;
@@ -435,7 +437,7 @@ async function handleApi(req, res, url) {
       json(res, 409, {ok: false, error: 'not_playing'});
       return true;
     }
-    if (b.gameId !== undefined &&
+    if ((b.gameId !== undefined || b.expectedMoves !== undefined) &&
         (b.gameId !== room.state.id || b.expectedMoves !== room.state.moves.length)) {
       json(res, 409, {ok: false, error: 'stale_state'});
       return true;

@@ -71,17 +71,19 @@ function createRecordsUI(ctx) {
     } catch (_) {
     }
     if (!copied) {
+      const previousFocus = document.activeElement;
       const area = document.createElement('textarea');
       area.value = text;
       area.style.position = 'fixed';
       area.style.opacity = '0';
-      document.body.appendChild(area);
+      (previousFocus.closest('[role="dialog"]') || document.body).appendChild(area);
       area.select();
       try {
         copied = document.execCommand('copy');
       } catch (_) {
       }
       area.remove();
+      if (previousFocus.isConnected && !previousFocus.closest('[inert]')) previousFocus.focus({preventScroll: true});
     }
     toast(copied ? t('export.copied') : t('toast.copyFail'));
     return copied;
@@ -199,7 +201,11 @@ function createRecordsUI(ctx) {
       btnDel.textContent = t('history.delete');
       btnDel.addEventListener('click', () => {
         if (confirm(t('history.deleteConfirm'))) {
-          BKNS.deleteGame(item.id);
+          const result = BKNS.deleteGame(item.id);
+          if (!result.ok) {
+            toast(t('storage.' + result.code));
+            return;
+          }
           toast(t('toast.deleted'));
           renderHistory();
           refreshLauncher();
@@ -249,6 +255,7 @@ function createRecordsUI(ctx) {
         renderReplayBoard();
       }
     });
+    app.replay.setSpeed(Number($('#speedSeg .active').dataset.speed));
     showView('replay');
     app.replay.seek(0);
   }

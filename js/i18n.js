@@ -279,6 +279,7 @@ const DICT = {
 };
 
 Object.assign(DICT.zh, {
+  'game.orientation':'旋转 {rot}° · 镜像 {mirror}',
   'lan.host': '房主',
   'lan.online': '在线',
   'lan.offline': '离线',
@@ -342,6 +343,7 @@ Object.assign(DICT.zh, {
   'sound.off': '开启音效'
 });
 Object.assign(DICT.en, {
+  'game.orientation':'Rotation {rot}° · Mirror {mirror}',
   'lan.host': 'Host',
   'lan.online': 'Online',
   'lan.offline': 'Offline',

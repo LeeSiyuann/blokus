@@ -132,3 +132,16 @@
 - 界面证据：output/playwright/13-mobile-game.png、14-narrow-game.png、15-mobile-export.png；已查看 390/320px 英文棋盘/字母辅助/操作区与导出弹窗，发现提示遮挡后修正并再次复核。截图、房间文件及含身份的 invalid.tmp 备份均不入库。
 - 提交：a83eb01（功能/界面/技术、测试及文档）；收尾文档提交回填此哈希并将 M11 置 done。
 - 遗留：物理手机/读屏软件、不同色觉体验、真实多设备/防火墙/多网卡与 Firefox/macOS/Linux 仍待现场验收；跨进程数据存储及断电目录持久性不作保证。AI 对手、官方双人/三人变体和公网对战不属于本轮范围。未 push、未创建 PR。
+
+### OP-014 全面缺陷复核与全功能回归（M12）
+
+- 时间：2026-10-09（Asia/Shanghai）。用户授权检查全部功能、修复、本地提交并推送 origin；先登记 PLAN.json/PLAN.md 的 M12=doing。
+- 基线：npm run test:all 全部通过（957 单元、42 服务、61 单机、28 联机）；代码和边界复核发现原测试未覆盖的交互缺陷。回放跳转新增断言先实际失败，再修复后通过。
+- 修复：选子刷新旋转/翻转按钮并增加朝向预览；跳转先捕获输入，重开回放应用所选速度；重复文件选择；删除失败反馈；损坏历史摘要恢复、零更新时间排序和 LAN 覆盖继续指针；原生降级复制焦点及在线广播保留导出选区；建房/加入/恢复防重复，旧客户端迟到回调隔离；服务 JSON/人数/不完整状态版本字段校验。
+- 文件：index.html、styles.css、js/ui.js、ui-records.js、ui-lan.js、ui-accessibility.js、storage.js、i18n.js；server/lan-server.js；tests/reliability.js、server-reliability.js、browser-smoke.js、browser-lan-smoke.js；package.json、AGENTS.md、README.md、docs/DESIGN.md、IMPLEMENTATION.md、REQUIREMENTS.md、PLAN.md、plan/PLAN.json、LOG.md、logs/2026-10-09.md。AI 扩展接口未改变，仍只预留设计。
+- 验证：最终 npm run test:all → 963/963 单元、服务自检 OK、51/51 服务可靠性、90/90 单机浏览器、30/30 双页面联机；启动辅助自检 OK。新旧规则各 2/3/4 人、LCG 种子 17/911：12 完整局、663 手、每 8 手比较剩余棋子的 1095 次候选/穷举结果、24 次 JSON/文本终局往返通过。
+- 界面与文件证据：实际浏览器 R/F、悔棋重放、PASS 终局、回放前后/跳转/4×/暂停/重开、设置刷新；实际下载文本/JSON 后校验内容，CDP 选择 JSON 文件、FileReader 导入；Clipboard API 拒绝后原生 execCommand 复制并恢复焦点；双击只新增一个房间，在线广播不影响导出选择。查看 16-selected-orientation.png 并复核 14-narrow-game.png/15-mobile-export.png。截图和下载 output/playwright/ 不入库。
+- Git/远端：fetch 成功，origin/main=85436dd 已有独立规则/旋转 PR，与本地 M9–M11 分叉；远端 BRANCH-RULES 禁止直推 main。创建 codex/full-feature-audit 交付当前完整版本，旋转改善适配本地控制器；不合并/覆盖 main，不创建 PR，不强制推送。
+- 静态检查：25 个 JavaScript 文件 node --check、git diff --check 均通过；工作区仅包含源代码/测试/文档，截图、下载及私有房间文件保持 gitignore。
+- 提交与推送：待本地提交后回填哈希，正常推送 origin/codex/full-feature-audit 并用 ls-remote 验证。
+- 遗留：真实跨设备/网络、防火墙/多网卡、物理手机/NVDA/VoiceOver、声音听测及其他系统/浏览器仍待现场验收；测试不保证所有环境无缺陷。main 分支合并留待用户后续流程。

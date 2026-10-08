@@ -150,6 +150,10 @@ input:focus, select:focus, .code-area:focus { border-color: var(--accent); }
 .tray { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; max-height: 320px; overflow-y: auto; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
 .tray-piece { background: rgba(2,6,23,0.5); border: 1px solid transparent; border-radius: 9px; padding: 3px; cursor: pointer; display: flex; flex-direction: column; align-items: center; position: relative; }
 .tray-piece:hover { border-color: var(--accent); }
+.sel-preview { display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+.sel-preview canvas { width: 88px; height: 88px; flex: none; background: rgba(2,6,23,0.45); border-radius: 10px; }
+.sel-meta { min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.sel-meta b { font-size: 17px; }
 .tray-piece.selected { border-color: var(--accent); background: rgba(56,189,248,0.16); }
 .tray-piece canvas { width: 100%; height: 44px; }
 .tray-piece span { font-size: 10px; color: var(--muted); }

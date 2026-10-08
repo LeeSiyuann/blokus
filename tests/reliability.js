@@ -171,6 +171,23 @@ module.exports = function(ok, eq) {
   eq(many.api.listGames().length, 200, '200 局上限清理索引');
   eq([...many.data.keys()].filter(k => k.startsWith('blokus.game.')).length, 200, '淘汰记录同时删除正文');
   ok(!!many.api.loadRecord('active'), '自动淘汰不删除活动局');
+  const damagedIndex = storage();
+  damagedIndex.api.saveRecord(record);
+  damagedIndex.data.set(damagedIndex.api.K.index, JSON.stringify([null, {}, {...damagedIndex.api.listGames()[0], players:'broken', rulesVersion:99}]));
+  eq(damagedIndex.api.listGames().length, 1, '损坏历史摘要从健康正文还原，无效条目不导致崩溃');
+  eq(damagedIndex.api.listGames()[0].players[0], 'Alice Smith', '历史摘要修复保留真实昵称');
+  ok(damagedIndex.api.saveRecord(notation.toJSONRecord(active)).ok && !!damagedIndex.api.loadRecord(sample.id), '修复摘要后保存新局不丢弃健康正文');
+  const importedLan = clone(notation.toJSONRecord(active));
+  importedLan.game.mode = 'lan';
+  ok(damagedIndex.api.saveRecord(importedLan).ok && damagedIndex.api.getCurrent()===null, '同 id 单机记录被联机棋谱覆盖时清理继续指针');
+  const zeroHistory = storage();
+  const older = game.createGame({id:'zero-time',startedAt:0}), newer = game.createGame({id:'later-time',startedAt:1000});
+  zeroHistory.api.saveRecord(notation.toJSONRecord(newer));
+  zeroHistory.api.saveRecord(notation.toJSONRecord(older));
+  eq(zeroHistory.api.listGames()[0].id, 'later-time', '零时间戳按真实更新时间排列');
+  const zeroImport = storage();
+  zeroImport.api.importBackup(zeroHistory.api.exportBackup());
+  eq(zeroImport.api.listGames()[0].id, 'later-time', '备份恢复保持零时间戳历史顺序');
 
   // 使用确定性时钟检查播放中的速度切换，不依赖真实等待。
   let pending = [];

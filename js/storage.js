@@ -89,7 +89,25 @@ function setSettings(p) {
 }
 function getIndex() {
   const v = read(K.index, []);
-  return Array.isArray(v) ? v : [];
+  if (!Array.isArray(v)) return [];
+  return v.flatMap(s => {
+    if (!s || typeof s.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(s.id)) return [];
+    const valid = Array.isArray(s.players) && s.players.every(x => typeof x === 'string') &&
+        Array.isArray(s.colors) && s.colors.length === s.players.length &&
+        s.colors.every(x => ['blue','yellow','red','green'].includes(x)) &&
+        s.seatCount === s.players.length && [2,3,4].includes(s.seatCount) &&
+        ['hotseat','lan'].includes(s.mode) && ['playing','finished'].includes(s.status) &&
+        Number.isInteger(s.moves) && s.moves >= 0 && s.moves <= 88 &&
+        (s.rulesVersion === undefined || [1,2].includes(s.rulesVersion)) &&
+        (s.scores == null || (typeof s.scores === 'object' && !Array.isArray(s.scores) &&
+                             s.colors.every(x => Number.isFinite(s.scores[x]))));
+    if (valid) return [s];
+    try {
+      const recovered = summarize(N.fromJSONRecord(loadRecord(s.id)));
+      if (s.deletedAt && Number.isFinite(Date.parse(s.deletedAt))) recovered.deletedAt = s.deletedAt;
+      return [recovered];
+    } catch (_) { return []; }
+  });
 }
 function summarize(g) {
   return Object.assign(N.summarize(g), {
@@ -112,10 +130,10 @@ function saveRecord(record) {
     list.push(summarize(g));
     list.sort(
         (a, b) =>
-            Number(b.updatedAt || Date.parse(b.createdAt)) - Number(a.updatedAt || Date.parse(a.createdAt)));
+            Number(b.updatedAt ?? Date.parse(b.createdAt)) - Number(a.updatedAt ?? Date.parse(a.createdAt)));
     d[K.game(g.id)] = JSON.stringify(rec);
     if (g.status === 'playing' && g.mode !== 'lan') d[K.current] = JSON.stringify(g.id);
-    if (g.status === 'finished' && getCurrent() === g.id) delete d[K.current];
+    if ((g.status !== 'playing' || g.mode === 'lan') && getCurrent() === g.id) delete d[K.current];
     d[K.index] = JSON.stringify(list);
     for (const k of Object.keys(d))
       if (k.startsWith('blokus.game.') && !list.some(x => K.game(x.id) === k)) delete d[k];
@@ -224,7 +242,7 @@ function importBackup(b) {
         list.push(s);
       d[K.game(g.id)] = JSON.stringify(e.record);
     }
-    list.sort((a,b)=>Number(b.updatedAt || Date.parse(b.createdAt))-Number(a.updatedAt || Date.parse(a.createdAt)));
+    list.sort((a,b)=>Number(b.updatedAt ?? Date.parse(b.createdAt))-Number(a.updatedAt ?? Date.parse(a.createdAt)));
     d[K.index] = JSON.stringify(list);
     d[K.settings] = JSON.stringify(validSettings(b.settings));
     const current =

@@ -146,6 +146,15 @@
       "status": "done",
       "commit": "a83eb01",
       "deliverables": ["js", "server", "styles.css", "index.html", "tests", "docs", "README.md" ]
+    },
+    {
+      "id": "M12",
+      "title": "全面缺陷复核、全功能回归、修复与同步origin",
+      "status": "doing",
+      "commit": null,
+      "branch": "codex/full-feature-audit",
+      "verification": "963 单元 / 自检 OK / 51 服务 / 90 单机 / 30 联机；额外 12 完整局、1095 次参考枚举比较、24 次棋谱往返",
+      "deliverables": ["js", "server", "tests", "docs", "README.md", "origin"]
     }
   ]
 }

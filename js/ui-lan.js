@@ -19,6 +19,11 @@ function createLanUI(ctx) {
     showGameOver,
     closeModal
   } = ctx;
+  let joining = false;
+  function setJoining(value) {
+    joining = value;
+    for (const id of ['btnCreateRoom','btnJoinRoom','btnResumeLan']) $('#' + id).disabled = value;
+  }
   /* ---------------- 联机 ---------------- */
 
   function savedConnection(tabOnly) {
@@ -153,7 +158,10 @@ function createLanUI(ctx) {
       toast(t('lan.needServer'));
       return;
     }
+    if (joining) return;
+    setJoining(true);
     try {
+      if (app.net) app.net.disconnect();
       app.net = new BKNS.NetClient();
       const data = await app.net.createRoom({
         name: $('#lanName').value.trim() || t('app.title'),
@@ -168,6 +176,8 @@ function createLanUI(ctx) {
       connectRoom();
     } catch (e) {
       toast(errText(e.code));
+    } finally {
+      setJoining(false);
     }
   }
   async function joinRoom() {
@@ -180,7 +190,10 @@ function createLanUI(ctx) {
       toast(t('lan.roomCode'));
       return;
     }
+    if (joining) return;
+    setJoining(true);
     try {
+      if (app.net) app.net.disconnect();
       app.net = new BKNS.NetClient();
       const data = await app.net.joinRoom({roomId: code, name: $('#lanName').value.trim() || t('app.title')});
       Object.assign(
@@ -191,12 +204,17 @@ function createLanUI(ctx) {
       connectRoom();
     } catch (e) {
       toast(errText(e.code));
+    } finally {
+      setJoining(false);
     }
   }
   async function resumeConnection() {
     const saved = savedConnection();
     if (!saved || isFileProtocol()) return;
+    if (joining) return;
+    setJoining(true);
     try {
+      if (app.net) app.net.disconnect();
       app.net = new BKNS.NetClient(saved.base);
       const data = await app.net.joinRoom({roomId: saved.roomId, token: saved.token});
       Object.assign(
@@ -207,13 +225,18 @@ function createLanUI(ctx) {
       if (['room_not_found', 'bad_token'].includes(e.code)) clearConnection();
       toast(errText(e.code));
       refreshLauncher();
+    } finally {
+      setJoining(false);
     }
   }
   function connectRoom() {
     app.state = null;
+    app.recovering = false;
+    const client = app.net;
     connectionStatus('reconnecting');
-    app.net.connect(
+    client.connect(
         (type, payload) => {
+          if (app.net !== client) return;
           if (type === 'removed') {
             app.net.reset();
             clearConnection();
@@ -228,12 +251,13 @@ function createLanUI(ctx) {
           applyLanPayload(payload);
         },
         (status) => {
+          if (app.net !== client) return;
           connectionStatus(status);
           if (status === 'reconnecting' && !app.recovering) {
             app.recovering = true;
-            app.net.joinRoom({roomId: app.net.roomId, token: app.net.token})
+            client.joinRoom({roomId: client.roomId, token: client.token})
                 .catch((e) => {
-                  if (['room_not_found', 'bad_token'].includes(e.code)) {
+                  if (app.net === client && ['room_not_found', 'bad_token'].includes(e.code)) {
                     app.net.reset();
                     clearConnection();
                     app.state = null;
@@ -243,7 +267,7 @@ function createLanUI(ctx) {
                   }
                 })
                 .finally(() => {
-                  app.recovering = false;
+                  if (app.net === client) app.recovering = false;
                 });
           }
         });

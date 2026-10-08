@@ -29,6 +29,7 @@
 - CLI 服务自动保存房间，重启可恢复未过期的对局；导入的联机棋谱用于回放，恢复席位须使用原浏览器连接身份。
 - 中英文切换及音效设置持久化；WebAudio 在首次用户手势后启用，关闭后保持静音。
 - 触屏点击先预览，再用「放置」确认；键盘 Tab 进入棋盘，方向键移动、Enter/Space 放置，R/F 旋转/翻转。弹窗支持 Tab 循环、Escape 关闭并恢复焦点。
+- 选子后旋转/翻转立即可用，放大预览显示当前朝向与镜像；回放重开保持所选速度。复制降级后恢复焦点，文件可重复选择导入，历史删除失败明确报告。
 - 「提示落点」浏览所选棋子的合法位置，由玩家确认后放置；可开启「字母辅助」，在棋盘用 B/Y/R/G 区分四色，设置随备份迁移。棋盘与回放提供格子坐标/颜色/玩家的读屏文本。
 
 规则依据：[Mattel Blokus 官方说明书](https://service.mattel.com/instruction_sheets/R1983-0920.pdf)。
@@ -51,17 +52,18 @@
 ## 开发与验证
 
 ```bash
-node tests/run-all.js                  # 单元与数据可靠性：957 项
+node tests/run-all.js                  # 单元与数据可靠性：963 项
 node server/lan-server.js --port 18345 --selftest
-node tests/server-reliability.js       # 恢复/鉴权/生命周期/磁盘失败/并发：42 项
-node tests/browser-smoke.js            # 单机/键盘/触屏/窄屏界面：61 项
-node tests/browser-lan-smoke.js        # 双页面联机：28 项
+node tests/server-reliability.js       # 恢复/鉴权/生命周期/磁盘失败/请求边界：51 项
+node tests/browser-smoke.js            # 单机/文件下载导入/键盘/触屏/窄屏：90 项
+node tests/browser-lan-smoke.js        # 双页面联机：30 项
 npm run test:all                       # 上述全部验证
 npm run benchmark                     # 穷举与候选锚点枚举比较（校验结果一致）
 ```
 
 单元测试和服务需要 Node 18+；浏览器测试使用 Node 22+ 的内置 WebSocket 及已安装的 Chrome/Edge，无 npm 依赖。
 2026-10-09 全部通过，截图位于 `output/playwright/`（不入库）。移动端已验证 Chrome 触屏事件与 320/390px 视口；真实手机/读屏软件、跨设备、防火墙和 macOS/Linux 启动还需现场验证。
+M12 另复核新旧规则各 2/3/4 人、两个固定种子的 12 局（663 手），候选枚举与全棋盘参考枚举比较 1095 次，JSON/文本终局往返 24 次通过。最新缺陷修复与验收边界见需求矩阵。
 
 ## 目录
 

@@ -253,13 +253,11 @@ function selectPiece(id) {
   app.rot = 0;
   app.mirror = 0;
   BKNS.Sound.play('select');
-  renderTray();
-  renderBoard();
-  $('#btnHint').disabled = !canLocalAct();
+  renderGame();
 }
 
 function rotateSelected() {
-  if (!app.selected) return;
+  if (!app.selected || !canLocalAct()) return;
   app.rot = (app.rot + 90) % 360;
   BKNS.Sound.play('rotate');
   renderTray();
@@ -267,7 +265,7 @@ function rotateSelected() {
 }
 
 function flipSelected() {
-  if (!app.selected) return;
+  if (!app.selected || !canLocalAct()) return;
   app.mirror = app.mirror ? 0 : 1;
   BKNS.Sound.play('rotate');
   renderTray();
@@ -465,6 +463,7 @@ function renderTray() {
     e.className = 'tray-empty';
     e.textContent = t('game.gameOver');
     host.appendChild(e);
+    renderSelectedPreview(colorId);
     return;
   }
   for (const id of remaining) {
@@ -486,6 +485,19 @@ function renderTray() {
             canvas, id, colorId, app.selected === id ? app.rot : 0, app.selected === id ? app.mirror : 0));
   }
   if (focusedPiece) host.querySelector('[data-piece="' + focusedPiece + '"]')?.focus({preventScroll: true});
+  renderSelectedPreview(colorId);
+}
+
+function renderSelectedPreview(colorId) {
+  const canvas = $('#selPreview');
+  $('#selName').textContent = app.selected || '—';
+  $('#selOrient').textContent = app.selected ?
+      t('game.orientation', {rot: app.rot, mirror: app.mirror}) : t('game.noSelection');
+  if (app.selected) {
+    BKNS.drawPieceThumb(canvas, app.selected, colorId, app.rot, app.mirror);
+  } else {
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 function showGameOver() {
@@ -690,6 +702,7 @@ function bindEvents() {
     showView('history');
   });
   $('#btnImport').addEventListener('click', () => {
+    $('#importFile').value = '';
     openModal('importModal');
   });
 
@@ -769,8 +782,9 @@ function bindEvents() {
   $('#btnPlay').addEventListener('click', () => app.replay && app.replay.toggle());
   $('#replaySlider').addEventListener('input', (e) => {
     if (app.replay) {
+      const index = parseInt(e.target.value, 10);
       app.replay.pause();
-      app.replay.seek(parseInt(e.target.value, 10));
+      app.replay.seek(index);
     }
   });
   $('#speedSeg').addEventListener('click', (e) => {

@@ -89,7 +89,7 @@ async function attach(target) {
   await cdp.send('Page.enable');
   cdp.evalJs = async (expr) => {
     const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.text + ' :: ' + expr);
+    if (r.exceptionDetails) throw new Error((r.exceptionDetails.exception?.description || r.exceptionDetails.text) + ' :: ' + expr);
     return r.result.value;
   };
   cdp.shot = async (name) => {
@@ -147,17 +147,20 @@ async function main() {
     await host.evalJs("document.querySelector('#btnLan').click()");
     await host.evalJs("document.querySelector('#lanName').value = 'Host'");
     await host.evalJs("document.querySelector('#lanSeats').value = '2'");
-    await host.evalJs("document.querySelector('#btnCreateRoom').click()");
+    const roomsBefore = (await fetch(BASE+'api/health').then(r=>r.json())).rooms;
+    await host.evalJs("document.querySelector('#btnCreateRoom').click();document.querySelector('#btnCreateRoom').click()");
     await sleep(700);
     const roomId = await host.evalJs("document.querySelector('#lobbyCode').textContent");
     check(await host.evalJs("document.body.dataset.view === 'lobby'"), '房主进入联机大厅');
+    check((await fetch(BASE+'api/health').then(r=>r.json())).rooms===roomsBefore+1, '快速重复建房只创建一个房间');
     check(/^[A-Z0-9]{4}$/.test(String(roomId)), '生成 4 位房间码（' + roomId + '）');
     check(await host.evalJs("document.querySelector('#btnLobbyStart').disabled === true"), '单人时不能开始');
 
     // 访客加入
     await host.send('Target.createTarget', { url: BASE + '?room=' + roomId });
     const list2 = await waitTargets(2);
-    const guestTarget = list2.find((t) => t.url.indexOf('room=') >= 0) || list2[list2.length - 1];
+    const guestTarget = list2.find((t) => t.id!==list[0].id && t.url===BASE+'?room='+roomId);
+    if (!guestTarget) throw Error('未找到本次邀请的独立访客页面');
     guest = await attach(guestTarget);
     for (let i = 0; i < 40; i++) {
       if (await guest.evalJs("document.readyState === 'complete' && !!document.querySelector('#btnJoinRoom')")) break;
@@ -187,6 +190,18 @@ async function main() {
       JSON.stringify(name) + ")); return c ? c.textContent : ''; })()");
 
     check(await host.evalJs("document.querySelector('#gameMode').textContent==='2 人简化模式'"), '联机双人局标注简化模式');
+    await host.evalJs("document.querySelector('#btnExport').click();document.querySelector('#exportText').focus();document.querySelector('#exportText').setSelectionRange(0,4)");
+    await guest.evalJs(`(async () => {
+      const s = JSON.parse(sessionStorage.getItem('blokus.connection'));
+      await fetch('/api/rooms/' + s.roomId + '/join', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: s.token })
+      });
+      return true;
+    })()`);
+    await sleep(180);
+    check(await host.evalJs("document.activeElement.id==='exportText' && document.querySelector('#exportText').selectionEnd===4"), '联机在线广播不打断导出焦点与选择');
+    await host.evalJs("document.querySelector('#exportModal .modal-close').click()");
     // 房主落子 A1
     await host.evalJs("[...document.querySelectorAll('#tray .tray-piece')].find(b => b.dataset.piece === 'I1').click()");
     const p1 = await host.cellPoint(0, 0);

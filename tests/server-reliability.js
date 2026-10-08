@@ -29,6 +29,12 @@ async function main() {
     return {status: res.status, ...await res.json()};
   };
   try {
+    for (const body of [null, [], 2, 'x']) {
+      check((await post('/api/rooms',body)).error==='bad_json', '非对象请求体被明确拒绝');
+    }
+    for (const seatCount of [0,'2',2.5,5]) {
+      check((await post('/api/rooms',{seatCount})).error==='invalid_seats', '非法人数不被静默默认或转换');
+    }
     const failSave = async (fn) => {
       const rename = fs.renameSync;
       fs.renameSync = (a,b) => { if(b===file) throw Error('injected disk failure'); return rename(a,b); };
@@ -68,6 +74,7 @@ async function main() {
     check((await get(route + '/stream')).status === 403, 'SSE 必须鉴权');
     check((await get('/.git/config')).status === 403, '禁止托管 Git 元数据');
     const initial = (await get(route + '/record?token=' + h.token)).record.game;
+    check((await post(route+'/move',{token:h.token,piece:'I1',anchor:[0,0],expectedMoves:0})).error==='stale_state', '缺失一半版本参数的请求被拒绝');
     check((await failSave(()=>post(route+'/move',{token:h.token,piece:'I1',anchor:[0,0]}))).error==='storage_failed' && rooms.get(h.roomId).state.moves.length===0, '落子写盘失败回滚棋盘与轮次');
     const events=[];
     const mock={token:j.token,res:{write:data=>events.push(data),end:()=>events.push('closed')}};

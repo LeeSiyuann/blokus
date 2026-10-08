@@ -1,6 +1,6 @@
 {
   "name": "blokus",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "四人角斗士棋 Blokus 复刻版：零依赖、零构建、单机 + 局域网联机",
   "scripts": {

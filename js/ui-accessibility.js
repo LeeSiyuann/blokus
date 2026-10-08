@@ -149,6 +149,7 @@ function createAccessibilityUI(ctx) {
   }
   function closeModal(id) {
     const at = dialogs.findIndex(d => d.id === id), entry = dialogs[at];
+    if (at < 0) return;
     if (at >= 0) dialogs.splice(at, 1);
     $('#' + id).classList.add('hidden');
     $('#' + id).inert = false;
@@ -157,8 +158,10 @@ function createAccessibilityUI(ctx) {
     $('main').inert = !!active;
     $('.topbar').inert = !!active;
     if (active) {
-      $('#' + active.id).inert = false;
-      $('#' + active.id).querySelector('button,textarea,input')?.focus();
+      const activeModal = $('#' + active.id);
+      activeModal.inert = false;
+      if (!activeModal.contains(document.activeElement))
+        (activeModal.contains(entry.returnTo) ? entry.returnTo : activeModal.querySelector('textarea,button,input'))?.focus();
     } else if (entry?.returnTo?.isConnected && !entry.returnTo.closest('.view[inert]'))
       entry.returnTo.focus({preventScroll: true});
   }

@@ -139,6 +139,7 @@ async function main() {
     check(await evalJs("document.readyState === 'complete'"), '页面加载完成');
     console.log('  诊断: ' + await evalJs("JSON.stringify({hasBK: !!window.BK, keys: Object.keys(window.BK||{}).length, scripts: [...document.scripts].map(s => s.src.split('/').pop()), hasRenderer: !!(window.BK && window.BK.Renderer)})"));
     check(await evalJs("document.body.dataset.view === 'launcher'"), '启动器视图显示');
+    check(await evalJs("BK.Sound.isEnabled() && BK.getSettings().sound"), '新浏览器默认开启音效');
     check(await evalJs("document.querySelector('#btnSingle').disabled === false"), '单机入口可用');
     check(await evalJs("document.querySelector('#btnLan').disabled === true"), 'file:// 下联机入口禁用');
     check(await evalJs("document.querySelector('#fileHint').classList.contains('hidden') === false"), 'file:// 提示可见');
@@ -163,6 +164,15 @@ async function main() {
     check((await evalJs("document.querySelectorAll('#playersPanel .player-chip').length")) === 4, '显示 4 名玩家');
     check(await evalJs("document.querySelector('#gameMode').textContent.includes('标准模式')"), '四人对局标注标准模式');
     check(await evalJs("(() => { const g=BK.createGame(); g.board[0]=0; return BK.canPlace(g,0,'I2',0,0,[1,1]).ok && BK.canPlace(g,0,'I2',0,0,[0,1]).code==='own_edge'; })()"), '浏览器共享引擎执行角接触规则');
+    await evalJs("document.querySelector('[data-piece=\"F5\"]').click();window.__shape=document.querySelector('#selPreview').toDataURL()");
+    check(await evalJs("!document.querySelector('#btnRotate').disabled && !document.querySelector('#btnFlip').disabled"), '选子后旋转与翻转按钮立即可用');
+    await evalJs("document.querySelector('#btnRotate').click()");
+    check(await evalJs("document.querySelector('#selOrient').textContent.includes('90') && document.querySelector('#selPreview').toDataURL()!==window.__shape"), '旋转按钮更新朝向与放大预览');
+    await evalJs("document.querySelector('#btnFlip').click()");
+    check(await evalJs("document.querySelector('#selOrient').textContent.includes('镜像 1')"), '翻转按钮更新镜像反馈');
+    await press('r','KeyR',82); await press('f','KeyF',70);
+    check(await evalJs("document.querySelector('#selOrient').textContent.includes('180') && document.querySelector('#selOrient').textContent.includes('镜像 0')"), 'R/F 快捷键与按钮使用同一朝向');
+    await shot('16-selected-orientation.png');
     await shot('02-game-start.png');
 
     // 选中 I1，点击棋盘 A1
@@ -181,6 +191,10 @@ async function main() {
     check((await evalJs("document.querySelector('#playersPanel').textContent")).indexOf('20 ') >= 0, '落子后剩余棋子减少');
     check((await evalJs("Object.keys(localStorage).filter(k => k.indexOf('blokus.') === 0).length")) >= 2, '已写入本地存档');
     await shot('03-after-move.png');
+    await evalJs("document.querySelector('#btnUndo').click()");
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===0 && !document.querySelector('[data-piece=\"I1\"]').disabled"), '悔棋恢复棋子轮次与零步存档');
+    await evalJs("document.querySelector('[data-piece=\"I1\"]').click()");await clickAt(pt.x,pt.y);
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===1"), '悔棋后可以重新合法落子');
 
     // 非法落子被拒绝（黄方首子放到 A1 附近会被拒）
     await evalJs("[...document.querySelectorAll('#tray .tray-piece')][0].click()");
@@ -202,6 +216,31 @@ async function main() {
     const exportText = await evalJs("document.querySelector('#exportText').value");
     check(String(exportText).startsWith('BKS1'), '导出文本棋谱为 BKS1');
     check(String(exportText).indexOf('1. B I1 A1') >= 0, '棋谱记录了第一步');
+    const downloads = path.join(OUT_DIR, 'downloads');
+    fs.mkdirSync(downloads, {recursive:true});
+    await cdp.send('Browser.setDownloadBehavior', {behavior:'allow',downloadPath:downloads});
+    const exportId = await evalJs("BK.getCurrent()");
+    await evalJs("document.querySelector('#btnDownloadExport').click()");
+    const textFile = path.join(downloads, exportId+'.bks.txt');
+    for(let i=0;i<20 && !fs.existsSync(textFile);i++) await sleep(100);
+    check(fs.existsSync(textFile) && fs.readFileSync(textFile,'utf8')===exportText, '实际下载文本棋谱与弹窗内容一致');
+    await evalJs("document.querySelector('#exportSeg [data-fmt=\"json\"]').click()");
+    const jsonExport = await evalJs("document.querySelector('#exportText').value");
+    check(JSON.parse(jsonExport).game.moves.length===1, 'JSON 导出保留当前着法');
+    await evalJs("document.querySelector('#btnDownloadExport').click()");
+    const jsonFile = path.join(downloads, exportId+'.json');
+    for(let i=0;i<20 && !fs.existsSync(jsonFile);i++) await sleep(100);
+    check(fs.existsSync(jsonFile) && fs.readFileSync(jsonFile,'utf8')===jsonExport, '实际下载 JSON 与弹窗内容一致');
+    await evalJs(`(()=>{
+      window.__clipboardDescriptor=Object.getOwnPropertyDescriptor(navigator,'clipboard');
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied')}}});
+      window.__exec=document.execCommand;
+      document.execCommand=function(cmd){window.__copyValue=document.activeElement.value;window.__copyResult=window.__exec.call(document,cmd);return window.__copyResult};
+      document.querySelector('#btnCopyExport').focus();
+    })()`);
+    await press('Enter','Enter',13);await sleep(120);
+    check(await evalJs("window.__copyResult && window.__copyValue===document.querySelector('#exportText').value && document.activeElement.id==='btnCopyExport'"), '剪贴板权限拒绝时实际降级复制并恢复焦点');
+    await evalJs("document.execCommand=window.__exec;if(window.__clipboardDescriptor)Object.defineProperty(navigator,'clipboard',window.__clipboardDescriptor);else delete navigator.clipboard");
     await shot('04-export.png');
     await evalJs("document.querySelector('#exportModal .modal-close').click()");
 
@@ -218,7 +257,7 @@ async function main() {
     await sleep(120);
 
     // 生成一局完整对局（用页面内引擎随机对弈），验证回放器
-    const simMoves = await evalJs(`(() => {
+    const simulation = await evalJs(`(() => {
       const g = BK.createGame({ seatCount: 4, players: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }] });
       let x = 12345;
       const rng = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
@@ -238,8 +277,9 @@ async function main() {
         if (!acted) BK.applyAction(g, { type: 'pass' });
       }
       BK.saveRecord(BK.toJSONRecord(g));
-      return g.moves.length;
+      return {moves:g.moves.length, lastType:g.moves.at(-1).type, before:BK.toJSONRecord(BK.replayTo(BK.toJSON(g),g.moves.length-1))};
     })()`);
+    const simMoves = simulation.moves;
     check(simMoves > 40, '页面内模拟完整对局（' + simMoves + ' 步）');
     await evalJs("document.querySelector('#btnHistory').click()");
     await sleep(250);
@@ -251,6 +291,18 @@ async function main() {
     await evalJs("document.querySelector('#btnNext').click()");
     await sleep(150);
     check(await evalJs("document.querySelector('#replaySlider').value") === '1', '回放可步进');
+    await evalJs("document.querySelector('#btnPrev').click()");
+    check(await evalJs("document.querySelector('#replaySlider').value==='0'"), '回放可后退');
+    await evalJs("const slider=document.querySelector('#replaySlider');slider.value='5';slider.dispatchEvent(new Event('input'))");
+    check(await evalJs("document.querySelector('#replaySlider').value==='5' && document.querySelector('#replayInfo').textContent.includes('5')"), '回放跳转与说明同步');
+    await evalJs("document.querySelector('#btnLast').click()");
+    check(Number(await evalJs("document.querySelector('#replaySlider').value"))===simMoves, '回放可跳到终局');
+    await evalJs("document.querySelector('#btnFirst').click();document.querySelector('#btnPlay').click()");await sleep(1000);
+    await evalJs("document.querySelector('#btnPlay').click()");
+    check(Number(await evalJs("document.querySelector('#replaySlider').value"))>=1, '回放自动播放可暂停');
+    await evalJs("document.querySelector('#btnFirst').click();document.querySelector('#speedSeg [data-speed=\"4\"]').click();document.querySelector('#btnPlay').click()");await sleep(320);
+    await evalJs("document.querySelector('#btnPlay').click()");
+    check(Number(await evalJs("document.querySelector('#replaySlider').value"))>=1, '4 倍速播放按新速度前进');
     await shot('05-replay.png');
 
     // 简化模式标签与旧棋谱回放。
@@ -274,6 +326,9 @@ async function main() {
     check(await evalJs("document.body.dataset.view==='replay' && document.querySelector('#replayMode').textContent.includes('仅供回放')"), '旧棋谱仅供回放并显示警告');
     await evalJs("document.querySelector('#btnLast').click()");
     check(await evalJs("document.querySelector('#replaySlider').value==='3'"), '旧棋谱三步完整保留');
+    await evalJs("document.querySelector('#btnFirst').click();document.querySelector('#btnPlay').click()");await sleep(320);
+    check(Number(await evalJs("document.querySelector('#replaySlider').value"))>=1 && await evalJs("document.querySelector('#speedSeg .active').dataset.speed==='4'"), '重新打开回放后速度与控件保持一致');
+    await evalJs("document.querySelector('#btnPlay').click();document.querySelector('#btnLast').click()");
     await shot('07-legacy-replay.png');
     await evalJs("document.querySelector('#btnReplayBack').click(); document.querySelector('#btnHistoryBack').click(); document.querySelector('#btnContinue').click()");
     check(await evalJs("document.body.dataset.view==='replay'"), '继续旧存档也进入只读回放');
@@ -285,6 +340,17 @@ async function main() {
     check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===0"), '新局零步即保存');
     await evalJs("window.__setItem=Storage.prototype.setItem; Storage.prototype.setItem=function(){throw new Error('quota')}; document.querySelector('#btnExitGame').click(); Storage.prototype.setItem=window.__setItem");
     check(await evalJs("document.querySelector('#toast').textContent.includes('Save failed')"), '存储失败显示明确提示');
+    await evalJs(`(()=>{
+      document.querySelector('#btnHistory').click();window.__historyCount=BK.listGames().length;
+      const index=JSON.parse(localStorage.getItem(BK.K.index));index[0].players='broken';localStorage.setItem(BK.K.index,JSON.stringify([null,...index]));document.querySelector('#btnHistory').click();
+    })()`);
+    check(await evalJs("document.querySelectorAll('#historyList .history-item').length===window.__historyCount"), '损坏历史摘要不导致界面异常或丢失健康记录');
+    await evalJs(`(()=>{
+      window.__deleteSet=Storage.prototype.setItem;window.__deleteConfirm=window.confirm;window.confirm=()=>true;window.__deleteFailed=false;
+      Storage.prototype.setItem=function(k,v){if(k===BK.K.index && !window.__deleteFailed){window.__deleteFailed=true;throw Error('quota')}return window.__deleteSet.call(this,k,v)};
+      document.querySelector('#historyList .history-item .ghost').click();Storage.prototype.setItem=window.__deleteSet;window.confirm=window.__deleteConfirm;
+    })()`);
+    check(await evalJs("BK.listGames().length===window.__historyCount && document.querySelector('#toast').textContent.includes('Save failed')"), '历史删除失败保留记录并报告失败');
     await evalJs("document.querySelector('#btnHistory').click(); window.__confirm=window.confirm;window.confirm=()=>true;document.querySelector('#historyList .history-item .ghost').click();window.confirm=window.__confirm;document.querySelector('#btnTrash').click()");
     check(await evalJs("document.querySelectorAll('#historyList .history-item').length===1"), '删除记录进入回收站');
     await evalJs("document.querySelector('#historyList .history-item .btn').click();document.querySelector('#btnTrash').click()");
@@ -298,10 +364,10 @@ async function main() {
     await evalJs("document.querySelector('#importModal .modal-close').click();document.querySelector('#btnHistory').click()");
     await shot('08-history-reliability.png');
 
-    const press = async (key,code,virtual) => {
+    async function press(key,code,virtual) {
       await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:virtual,text:key==='Enter'?'\r':key===' '?' ':''});
       await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:virtual});
-    };
+    }
     await evalJs("document.querySelector('#btnHistoryBack').click();document.querySelector('#btnSingle').click();document.querySelector('#seatSeg [data-seats=\"4\"]').click();document.querySelector('#btnSetupStart').click();document.querySelector('[data-piece=\"I1\"]').click();document.querySelector('#boardAccess').focus()");
     check(await evalJs("document.querySelectorAll('#boardAccess [role=gridcell]').length===400"),'读屏棋盘提供全部 400 格');
     await press('ArrowRight','ArrowRight',39);
@@ -343,6 +409,29 @@ async function main() {
     check(await evalJs("document.documentElement.scrollWidth<=320 && document.querySelector('#exportModal .modal-card').getBoundingClientRect().width<=320"),'窄屏导出弹窗不溢出');
     check(await evalJs("getComputedStyle(document.querySelector('#toast')).pointerEvents==='none' && document.body.classList.contains('dialog-open')"),'弹窗提示不拦截复制与下载操作');
     await shot('15-mobile-export.png');
+    await evalJs("document.querySelector('#exportModal .modal-close').click();document.querySelector('#btnExitGame').click();document.querySelector('#btnSingle').click();document.querySelector('#seatSeg [data-seats=\"3\"]').click();document.querySelector('#btnSetupStart').click()");
+    check(await evalJs("document.querySelectorAll('#playersPanel .player-chip').length===3 && document.querySelector('#gameMode').textContent.includes('3-player simplified')"), '三人热座界面与简化标签正确');
+    await evalJs("if(BK.Sound.isEnabled())document.querySelector('#soundToggle').click()");
+    check(await evalJs("!BK.Sound.isEnabled() && !BK.getSettings().sound"), '音效可关闭并保存');
+    await cdp.send('Page.reload');await sleep(400);
+    check(await evalJs("!BK.Sound.isEnabled() && BK.getLang()==='en' && BK.getSettings().patternMode"), '刷新保留音效语言与字母辅助设置');
+    await evalJs("document.querySelector('#btnContinue').click()");
+    check(await evalJs("document.body.dataset.view==='game' && document.querySelectorAll('#playersPanel .player-chip').length===3"), '刷新后可继续三人零步对局');
+    await evalJs("document.querySelector('#btnExitGame').click();document.querySelector('#btnImport').click()");
+    const documentNode = await cdp.send('DOM.getDocument');
+    const fileInput = await cdp.send('DOM.querySelector',{nodeId:documentNode.root.nodeId,selector:'#importFile'});
+    await cdp.send('DOM.setFileInputFiles',{nodeId:fileInput.nodeId,files:[jsonFile]});await sleep(120);
+    check(await evalJs("document.querySelector('#importText').value")===jsonExport, '实际选择 JSON 文件后正确读取内容');
+    await evalJs("document.querySelector('#btnDoImport').click()");
+    check(await evalJs("document.body.dataset.view==='game' && BK.loadRecord(BK.getCurrent()).game.moves.length===1"), '文件导入后还原对局与继续入口');
+    await evalJs("document.querySelector('#btnExitGame').click();document.querySelector('#btnImport').click()");
+    check(await evalJs("document.querySelector('#importFile').value===''"), '再次导入清空文件选择，可重选同一个文件');
+    await evalJs("document.querySelector('#importText').value="+JSON.stringify(JSON.stringify(simulation.before))+";document.querySelector('#btnDoImport').click()");
+    check(simulation.lastType==='pass' && await evalJs("!document.querySelector('#btnPass').disabled"), '无合法落子时实际 PASS 按钮启用');
+    await evalJs("document.querySelector('#btnPass').click()");
+    check(await evalJs("BK.loadRecord("+JSON.stringify(simulation.before.game.id)+").game.status==='finished' && !document.querySelector('#overModal').classList.contains('hidden') && BK.getCurrent()===null && document.querySelector('#overBody').textContent.length>0"), 'PASS 正确终局、显示计分并清除继续指针');
+    await evalJs("document.querySelector('#btnOverExport').click()");
+    check(await evalJs("!document.querySelector('#exportModal').classList.contains('hidden') && document.activeElement.id==='exportText' && BK.parseText(document.querySelector('#exportText').value).state.status==='finished'"), '终局弹窗可导出完整棋谱');
 
     // 结果
     const failed = results.filter((r) => !r.ok);
