@@ -13,6 +13,7 @@
   <div class="top-actions">
     <button id="langToggle" data-i18n-title="app.title" class="btn ghost">中 / EN</button>
     <button id="soundToggle" data-i18n-title="sound.on" class="btn ghost" aria-pressed="true">🔊</button>
+    <button id="patternToggle" class="btn ghost" aria-pressed="false" data-i18n="access.pattern">字母辅助</button>
   </div>
 </header>
 
@@ -57,11 +58,11 @@
     <div id="lanPanel" class="panel hidden">
       <h3 data-i18n="lan.title">局域网联机</h3>
       <div class="field">
-        <label data-i18n="lan.name">你的昵称</label>
+        <label for="lanName" data-i18n="lan.name">你的昵称</label>
         <input id="lanName" maxlength="12" data-i18n-ph="lan.name">
       </div>
       <div class="field">
-        <label data-i18n="lan.seatCount">座位数</label>
+        <label for="lanSeats" data-i18n="lan.seatCount">座位数</label>
         <select id="lanSeats">
           <option value="2" data-i18n="mode.two">2 人 · 简化模式</option>
           <option value="3" data-i18n="mode.three">3 人 · 简化模式</option>
@@ -73,7 +74,7 @@
       </div>
       <div class="divider"></div>
       <div class="field">
-        <label data-i18n="lan.roomCode">房间码</label>
+        <label for="lanRoomCode" data-i18n="lan.roomCode">房间码</label>
         <input id="lanRoomCode" maxlength="6" style="text-transform:uppercase" placeholder="ABCD">
       </div>
       <div class="row">
@@ -138,19 +139,23 @@
   <section id="view-game" class="view">
     <div class="game-layout">
       <div class="board-wrap">
-        <canvas id="boardCanvas"></canvas>
+        <canvas id="boardCanvas" aria-hidden="true"></canvas>
+        <div id="boardAccess" class="sr-only" role="grid" tabindex="0" aria-rowcount="20" aria-colcount="20" aria-describedby="boardInstructions"></div>
       </div>
       <aside class="side">
         <p id="saveStatus" class="hint" role="status"></p>
         <p id="netStatus" class="hint" role="status"></p>
         <p id="gameMode" class="hint"></p>
-        <div id="turnBanner" class="turn-banner"></div>
+        <div id="turnBanner" class="turn-banner" role="status" aria-live="polite"></div>
+        <p id="boardInstructions" class="hint" data-i18n="access.instructions"></p>
+        <p id="boardStatus" class="hint" role="status"></p>
         <div id="playersPanel" class="players-panel"></div>
         <div id="tray" class="tray"></div>
         <div class="controls">
           <button id="btnRotate" class="btn" data-i18n="game.rotate">旋转 R</button>
           <button id="btnFlip" class="btn" data-i18n="game.flip">翻转 F</button>
           <button id="btnPlace" class="btn primary" data-i18n="game.place">落子</button>
+          <button id="btnHint" class="btn" data-i18n="access.hint">提示落点</button>
           <button id="btnPass" class="btn" data-i18n="game.pass">PASS</button>
           <button id="btnUndo" class="btn" data-i18n="game.undo">悔棋</button>
           <button id="btnExport" class="btn" data-i18n="game.export">导出棋谱</button>
@@ -180,9 +185,10 @@
       </div>
     </div>
     <div class="replay-layout">
-      <div class="board-wrap"><canvas id="replayCanvas"></canvas></div>
+      <div class="board-wrap"><canvas id="replayCanvas" aria-hidden="true"></canvas><div id="replayAccess" class="sr-only" role="grid" tabindex="0" aria-rowcount="20" aria-colcount="20" aria-describedby="replayInstructions"></div></div>
       <aside class="side">
         <p id="replayMode" class="hint"></p>
+        <p id="replayInstructions" class="hint" data-i18n="access.replayInstructions"></p>
         <div id="replayInfo" class="turn-banner"></div>
         <div id="replayPlayers" class="players-panel"></div>
         <div class="controls">
@@ -193,7 +199,7 @@
             <button id="btnNext" data-i18n-title="replay.next" class="btn">▶</button>
             <button id="btnLast" data-i18n-title="replay.last" class="btn" title="⏭">⏭</button>
           </div>
-          <input id="replaySlider" class="slider" type="range" min="0" max="0" value="0" step="1">
+          <input id="replaySlider" class="slider" type="range" min="0" max="0" value="0" step="1" data-i18n-aria="access.replayStep">
           <div class="row">
             <span class="muted" data-i18n="replay.speed">速度</span>
             <div class="seg" id="speedSeg">
@@ -211,16 +217,16 @@
 
 <!-- ============ 导出弹窗 ============ -->
 <div id="exportModal" class="modal hidden">
-  <div class="modal-card">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
     <div class="row space-between">
-      <h3 data-i18n="export.title">棋谱导出</h3>
-      <button class="btn ghost modal-close" data-close="exportModal">✕</button>
+      <h3 id="exportTitle" data-i18n="export.title">棋谱导出</h3>
+      <button class="btn ghost modal-close" data-close="exportModal" data-i18n-aria="common.close">✕</button>
     </div>
     <div class="seg" id="exportSeg">
       <button class="seg-btn active" data-fmt="text" data-i18n="export.text">文本棋谱（BKS1）</button>
       <button class="seg-btn" data-fmt="json" data-i18n="export.json">JSON（无损）</button>
     </div>
-    <textarea id="exportText" class="code-area" readonly></textarea>
+    <textarea id="exportText" class="code-area" readonly data-i18n-aria="export.title"></textarea>
     <div class="row end">
       <button id="btnCopyExport" class="btn" data-i18n="export.copy">复制</button>
       <button id="btnDownloadExport" class="btn primary" data-i18n="export.download">下载</button>
@@ -230,13 +236,13 @@
 
 <!-- ============ 导入弹窗 ============ -->
 <div id="importModal" class="modal hidden">
-  <div class="modal-card">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importTitle">
     <div class="row space-between">
-      <h3 data-i18n="export.importTitle">导入棋谱</h3>
-      <button class="btn ghost modal-close" data-close="importModal">✕</button>
+      <h3 id="importTitle" data-i18n="export.importTitle">导入棋谱</h3>
+      <button class="btn ghost modal-close" data-close="importModal" data-i18n-aria="common.close">✕</button>
     </div>
     <p class="muted" data-i18n="export.importHint">粘贴 BKS1 文本或 JSON，或选择文件。</p>
-    <textarea id="importText" class="code-area" placeholder="BKS1 / JSON"></textarea>
+    <textarea id="importText" class="code-area" placeholder="BKS1 / JSON" data-i18n-aria="export.importTitle"></textarea>
     <div class="row end">
       <label class="btn ghost file-label">
         <span data-i18n="common.importFile">选择文件</span>
@@ -249,7 +255,7 @@
 
 <!-- ============ 终局弹窗 ============ -->
 <div id="overModal" class="modal hidden">
-  <div class="modal-card">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="overTitle">
     <h3 id="overTitle" data-i18n="game.gameOver">对局结束</h3>
     <div id="overBody"></div>
     <div class="row end">
@@ -260,7 +266,7 @@
   </div>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
 <script src="js/pieces.js"></script>
 <script src="js/rules.js"></script>
@@ -272,6 +278,9 @@
 <script src="js/render.js"></script>
 <script src="js/replay.js"></script>
 <script src="js/net.js"></script>
+<script src="js/ui-accessibility.js"></script>
+<script src="js/ui-records.js"></script>
+<script src="js/ui-lan.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

@@ -237,12 +237,14 @@
     if (obj.version !== undefined && obj.version !== VERSION) throw new Error('unsupported_format_version');
     if (!Array.isArray(obj.players) || obj.players.length < 2 || obj.players.length > 4 ||
         obj.players.some((p) => !p || typeof p.name !== 'string' || p.name.length > 120)) throw new Error('invalid_players');
+    if (obj.seatCount !== undefined && obj.seatCount !== obj.players.length) throw new Error('invalid_seats');
     if (obj.mode !== undefined && !['hotseat','lan'].includes(obj.mode)) throw new Error('invalid_mode');
     if (!Array.isArray(obj.moves) || obj.moves.length > obj.players.length * 22) throw new Error('invalid_moves');
     if (obj.seatIds !== undefined && (!Array.isArray(obj.seatIds) || obj.seatIds.length !== obj.players.length)) throw new Error('invalid_seats');
     if (obj.id !== undefined && (typeof obj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(obj.id))) throw new Error('invalid_id');
     if (obj.createdAt !== undefined && !Number.isFinite(Date.parse(obj.createdAt))) throw new Error('invalid_time');
     for (const key of ['startedAt','updatedAt','finishedAt','turnStartedAt']) {
+      if (obj[key] === null && key !== 'finishedAt') throw new Error('invalid_time');
       if (obj[key] !== undefined && obj[key] !== null && (!Number.isFinite(obj[key]) || obj[key] < 0)) throw new Error('invalid_time');
     }
     const state = rebuild(obj, obj.moves);

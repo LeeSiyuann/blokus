@@ -65,7 +65,7 @@
     layout() {
       const dpr = global.devicePixelRatio || 1;
       const rect = this.canvas.getBoundingClientRect();
-      const cssSize = Math.max(240, Math.floor(Math.min(rect.width || 640, rect.height || 640)));
+      const cssSize = Math.max(1, Math.floor(Math.min(rect.width || 640, rect.height || 640)));
       const px = Math.round(cssSize * dpr);
       if (this.canvas.width !== px || this.canvas.height !== px) {
         this.canvas.width = px;
@@ -139,6 +139,11 @@
           roundRect(ctx, x, y, w, w, r);
           ctx.fillStyle = col.fill; ctx.fill();
           ctx.strokeStyle = col.dark; ctx.lineWidth = 1; ctx.stroke();
+          if (this.opts.patternMode) {
+            ctx.fillStyle = ['blue','red'].includes(colorId) ? '#fff' : '#0f172a';
+            ctx.font = 'bold '+Math.max(8,Math.round(cell*0.48))+'px system-ui';
+            ctx.fillText({blue:'B',yellow:'Y',red:'R',green:'G'}[colorId],x+w/2,y+w/2);
+          }
         }
       }
 
@@ -169,14 +174,22 @@
         }
         ctx.restore();
       }
+      const cursor = this.opts.cursor;
+      if (cursor) {
+        ctx.save();ctx.strokeStyle='#0f172a';ctx.lineWidth=4;
+        ctx.strokeRect(pad+cursor.c*cell+1,pad+cursor.r*cell+1,cell-2,cell-2);
+        ctx.strokeStyle='#38bdf8';ctx.lineWidth=2;
+        ctx.strokeRect(pad+cursor.c*cell+1,pad+cursor.r*cell+1,cell-2,cell-2);ctx.restore();
+      }
     }
 
     /** 将客户端坐标转换为棋盘行列；返回 {r,c} 或 null */
     toCell(clientX, clientY) {
       if (!this.canvas) return null;
       const rect = this.canvas.getBoundingClientRect();
-      const { pad, cell } = this.layout();
-      const x = clientX - rect.left, y = clientY - rect.top;
+      if (!rect.width || !rect.height) return null;
+      const { pad, cell, cssSize } = this.layout();
+      const x = (clientX - rect.left) * cssSize / rect.width, y = (clientY - rect.top) * cssSize / rect.height;
       const c = Math.floor((x - pad) / cell), r = Math.floor((y - pad) / cell);
       if (r < 0 || c < 0 || r >= SIZE || c >= SIZE) return null;
       return { r, c };

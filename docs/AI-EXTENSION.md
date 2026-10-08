@@ -1,6 +1,6 @@
 # AI 扩展与二次开发接口（AI-EXTENSION）
 
-> 版本：v1.1 ｜ 日期：2026-10-08 ｜ R12：预留设计与参数文档；当前不实现 AI 对手
+> 版本：v1.2 ｜ 日期：2026-10-09 ｜ R12：预留设计与参数文档；当前不实现 AI 对手
 
 ## 1. 已实现与预留的边界
 
@@ -11,7 +11,7 @@ BK.AI 注册表、ctx 构建器、AI 实现、Worker 入口及未注册 AI 的�
 | 接口 | 状态 | 实际调用/用途 |
 | --- | --- | --- |
 | BK.createGame(options) | 已实现 | 创建规则 2 的新局 |
-| BK.allLegalActions(state,playerIndex,limit?) | 已实现 | 合法 place 动作列表；无合法着法时给 pass，调用方须先检查状态/玩家是否仍可行动 |
+| BK.allLegalActions(state,playerIndex,limit?) | 已实现 | 合法 place 动作列表；仅进行中当前玩家无着法时给 pass；终局/无效/已退出/已出完玩家返回 []，limit 达到后停止枚举 |
 | BK.hasAnyMove / mustPass | 已实现 | 判断合法落子与 PASS |
 | BK.applyAction(state,action,options?) | 已实现 | 唯一动作校验通道；原地修改 state，返回 ok/code/move |
 | BK.toJSON/fromJSON/rebuild/replayTo | 已实现 | JSON 快照、严格还原、搜索演练与回放 |
@@ -21,6 +21,8 @@ BK.AI 注册表、ctx 构建器、AI 实现、Worker 入口及未注册 AI 的�
 | ctx / BK.evaluateBoard | 预留 | 只读上下文与启发式评估 |
 
 Node 对应 require('../js/game.js')、require('../js/rules.js') 等模块；浏览器全部位于 window.BK。
+合法枚举已使用连接点候选锚点，按原朝向/行列顺序返回；独立穷举比较覆盖新旧规则，hasAnyMove 可提前返回。tests/benchmark-rules.js 提供固定局面的等价校验与耗时采样。UI「提示落点」只是玩家所选棋子的合法位置预览，不是 AI 对手或调度器。
+allLegalActions 的 limit 缺省或 Infinity 表示不限制，正整数表示最多返回的动作数；0、负数或其他无效值返回 []，不会因限制而生成错误 PASS。
 
 ## 2. 底层实际参数
 
@@ -109,6 +111,7 @@ ui.js / 未来控制器调度器：观察 state.turn 和 players[turn].controlle
 ```
 
 这些步骤尚未写入 ui.js；必须在实现 AI 时新增调度层，不能只给玩家写 controller='ai' 就认为完成。
+ui.js 目前协调对局与路由；ui-lan.js 管理权威网络状态，ui-records.js 管理历史/回放，ui-accessibility.js 管理输入与焦点。未来调度器应从对局更新和离开入口挂载，复用既有成功后的保存/渲染/音效流程，避免在回放控制器或提示按钮内调度。
 建议目录 js/ai/index.js、random.js、greedy.js、worker.js，目前可以不存在。
 现有脚本都是非 ES Module，新增 AI 也应保持 file:// 单机可运行；更重的 Worker 支持应独立检测环境并提供降级。
 
@@ -130,4 +133,4 @@ ui.js / 未来控制器调度器：观察 state.turn 和 players[turn].controlle
 - JSON/BKS1 往返一致，JSON 保持 elapsedMs/终局时间与并列结果。
 - 超时、非法返回、Worker 出错、悔棋/换局后的迟到结果可恢复；离开页面无残留定时器。
 
-可按随机合法基线 → 贪心 → 搜索/MCTS 逐步实现；候选角点枚举和 Worker 性能优化应先测量，再扩展。
+可按随机合法基线 → 贪心 → 搜索/MCTS 逐步实现；候选枚举已交付，后续搜索缓存与 Worker 仍应先测量、核对等价再扩展。

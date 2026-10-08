@@ -142,6 +142,8 @@ module.exports = function(ok, eq) {
   eq(b.api.getSettings().lang, 'en', '备份迁移语言');
   eq(b.api.getSettings().sound, false, '备份迁移音效');
   eq(b.api.listGames().length, 1, '备份迁移历史');
+  a.api.setSettings({patternMode:true});
+  ok(b.api.importBackup(a.api.exportBackup()).ok && b.api.getSettings().patternMode, '备份迁移字母辅助设置');
   const before = JSON.stringify([...b.data]);
   const bad = clone(backup);
   bad.records[0].record.game.moves[0].anchor = null;
@@ -149,6 +151,10 @@ module.exports = function(ok, eq) {
   eq(JSON.stringify([...b.data]), before, '损坏备份不会改写原数据');
   const active = game.createGame({seatCount: 2, id: 'active'});
   b.api.saveRecord(notation.toJSONRecord(active));
+  const replacing = b.api.exportBackup();
+  replacing.records.find(e=>e.record.game.id==='active').deletedAt = new Date().toISOString();
+  replacing.current = 'missing';
+  ok(b.api.importBackup(replacing).ok && b.api.getCurrent()===null, '备份覆盖删除活动局时清理无效继续指针');
   const beforeFailure = JSON.stringify([...b.data]);
   b.fail(b.api.K.index);
   const extra = clone(record);

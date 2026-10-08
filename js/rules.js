@@ -81,19 +81,52 @@
     return { ok: true, cells };
   }
 
-  /** 某棋子当前所有合法落点 */
-  function legalPlacements(state, playerIndex, pieceId) {
+  /** 可连接的空格：首子起始角；标准为角点，旧版为边邻点。 */
+  function connectionCells(state, playerIndex) {
+    const targets = new Set();
+    let first = true;
+    for (let i = 0; i < state.board.length; i++) {
+      if (state.board[i] !== playerIndex) continue;
+      first = false;
+      const r = Math.floor(i / SIZE), c = i % SIZE;
+      const dirs = state.rulesVersion === 1 ? DIRS : [[-1,-1],[-1,1],[1,-1],[1,1]];
+      for (const [dr, dc] of dirs) {
+        const rr = r + dr, cc = c + dc;
+        if (!inBounds(rr, cc) || cellAt(state.board, rr, cc) !== EMPTY) continue;
+        if (state.rulesVersion !== 1 && DIRS.some(([er, ec]) => cellAt(state.board, rr + er, cc + ec) === playerIndex)) continue;
+        targets.add(idx(rr, cc));
+      }
+    }
+    if (first && state.players[playerIndex]) {
+      const [r, c] = state.players[playerIndex].corner;
+      if (cellAt(state.board, r, c) === EMPTY) targets.add(idx(r, c));
+    }
+    return [...targets].sort((a, b) => a - b).map((i) => [Math.floor(i / SIZE), i % SIZE]);
+  }
+
+  /** 枚举候选锚点后仍由 canPlace 裁判；排序保留原穷举的稳定顺序。 */
+  function legalPlacements(state, playerIndex, pieceId, limit, targets) {
     const piece = PIECES[pieceId];
-    if (!piece) return [];
+    if (!piece || !(state.remaining[playerIndex] || []).includes(pieceId)) return [];
     const out = [];
+    const max = limit === undefined ? Infinity : limit;
+    if (max <= 0) return out;
+    const connections = targets || connectionCells(state, playerIndex);
     for (const o of piece.orientations) {
       let maxR = 0, maxC = 0;
       for (const [r, c] of o.cells) { if (r > maxR) maxR = r; if (c > maxC) maxC = c; }
-      for (let ar = 0; ar + maxR < SIZE; ar++) {
-        for (let ac = 0; ac + maxC < SIZE; ac++) {
-          const res = canPlace(state, playerIndex, pieceId, o.rot, o.mirror, [ar, ac]);
-          if (res.ok) out.push({ piece: pieceId, rot: o.rot, mirror: o.mirror, anchor: [ar, ac], cells: res.cells });
+      const anchors = new Set();
+      for (const [r, c] of connections) {
+        for (const [dr, dc] of o.cells) {
+          const ar = r - dr, ac = c - dc;
+          if (ar >= 0 && ac >= 0 && ar + maxR < SIZE && ac + maxC < SIZE) anchors.add(idx(ar, ac));
         }
+      }
+      for (const a of [...anchors].sort((a, b) => a - b)) {
+        const anchor = [Math.floor(a / SIZE), a % SIZE];
+        const res = canPlace(state, playerIndex, pieceId, o.rot, o.mirror, anchor);
+        if (res.ok) out.push({ piece: pieceId, rot: o.rot, mirror: o.mirror, anchor, cells: res.cells });
+        if (out.length >= max) return out;
       }
     }
     return out;
@@ -102,8 +135,9 @@
   /** 是否存在合法落子（非 pass） */
   function hasAnyMove(state, playerIndex) {
     const remaining = state.remaining[playerIndex] || [];
+    const targets = connectionCells(state, playerIndex);
     for (const pieceId of remaining) {
-      if (legalPlacements(state, playerIndex, pieceId).length > 0) return true;
+      if (legalPlacements(state, playerIndex, pieceId, 1, targets).length > 0) return true;
     }
     return false;
   }
@@ -117,15 +151,19 @@
 
   /** 枚举全部合法动作（含无法落子时的 pass） */
   function allLegalActions(state, playerIndex, limit) {
+    if (state.status !== 'playing' || !state.players[playerIndex] || state.players[playerIndex].passed || !(state.remaining[playerIndex] || []).length) return [];
     const actions = [];
-    const max = limit || Infinity;
+    const max = limit === undefined || limit === Infinity ? Infinity :
+      Number.isInteger(limit) && limit > 0 ? limit : 0;
+    if (max === 0) return actions;
+    const targets = connectionCells(state, playerIndex);
     for (const pieceId of (state.remaining[playerIndex] || [])) {
-      for (const p of legalPlacements(state, playerIndex, pieceId)) {
+      for (const p of legalPlacements(state, playerIndex, pieceId, max - actions.length, targets)) {
         actions.push({ type: 'place', piece: p.piece, rot: p.rot, mirror: p.mirror, anchor: p.anchor });
         if (actions.length >= max) return actions;
       }
     }
-    if (actions.length === 0) actions.push({ type: 'pass' });
+    if (actions.length === 0 && state.status === 'playing' && state.turn === playerIndex && !state.players[playerIndex].passed && state.remaining[playerIndex].length) actions.push({ type: 'pass' });
     return actions;
   }
 
@@ -170,7 +208,7 @@
     return {
       scores, bonus, remainingSquares: remaining, ranking, winners,
       moveCount: state.moves.length,
-      durationMs: (state.finishedAt || Date.now()) - state.startedAt
+      durationMs: (state.finishedAt === null || state.finishedAt === undefined ? Date.now() : state.finishedAt) - state.startedAt
     };
   }
 

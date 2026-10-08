@@ -116,3 +116,19 @@
 - 界面证据：output/playwright/08-history-reliability.png、12-lan-recovery.png；已查看英文历史/损坏导入提示、简化模式和联网离席状态，排版清晰；截图不入库。
 - 提交：8fa28c9（引擎/数据/联机/界面、测试及文档）；收尾文档提交回填此哈希并置 M10=done。
 - 遗留：真实多设备/防火墙、多网卡与 macOS/Linux/Firefox 实测尚未完成；手机/读屏、枚举性能、UI 拆分及服务磁盘故障事务可继续改善；AI 对手与官方双人/三人变体不属于当前需求。旧局只回放，联机身份不随公开备份迁移；未 push、未创建 PR。
+
+## 2026-10-09
+
+### OP-013 落实功能、界面与技术推荐改进（M11）
+
+- 时间：2026-10-09（Asia/Shanghai）。
+- 规划：先登记 PLAN.json/PLAN.md 的 M11=doing，依次实施服务事务、规则候选枚举、UI 控制器拆分、窄屏/可访问交互、数据边界与验收文档。
+- 功能与界面：触屏先预览再确认，键盘棋盘导航/落子，读屏 400 格文本与实际 AX 树，弹窗背景 inert/Tab 循环/Escape 返回焦点；四色字母辅助与持久化设置；所选棋子的合法落点提示；320/390px 英文布局/44px 操作按钮，修正缩放坐标及提示遮挡操作区。
+- 技术：合法枚举改为连接点候选锚点，保持新旧规则的原顺序并与独立穷举比较，PASS 检查与限量枚举提前返回；终局/退出/无效限制无假 PASS。提取 ui-records/ui-lan/ui-accessibility 控制器，保持原生零依赖/传统 script/file://。服务快照 fsync/rename，先存盘再响应/广播/关闭连接，写入失败回滚；坏房间隔离、坏整文件拒绝启动且保留原文；异步读取后确认房间仍存在。
+- 复核追加：重复服务测试复现 Windows 文件替换 EPERM，补充最多 4 次重试/总等待上限 50ms；持续占用仍回滚，日志只含错误码。元数据显式人数/null 时间拒绝、finishedAt=0 保留；备份合并排序与失效继续指针清理。
+- 变更文件：index.html、styles.css、package.json；js/rules.js、game.js、storage.js、render.js、i18n.js、ui.js，以及新增 ui-records.js、ui-lan.js、ui-accessibility.js；server/lan-server.js 与新增 room-store.js；tests/run-all.js、reliability.js、server-reliability.js、browser-smoke.js，以及新增 placement-reference.js、improvements.js、benchmark-rules.js；README.md、AGENTS.md、docs/DESIGN.md、IMPLEMENTATION.md、AI-EXTENSION.md、REQUIREMENTS.md、PLAN.md、plan/PLAN.json、LOG.md；logs/2026-10-09.md。
+- 验证：最终 npm run test:all → 单元 957/957、服务自检 OK、服务可靠性 42/42、单机浏览器 61/61、双页面联机 28/28；启动辅助自检 OK。文件占用修复后服务可靠性连续 30 轮通过；25 个 JavaScript 文件语法与 git diff --check 通过。浏览器经批准于沙箱外启动。
+- 性能：固定 32 手局面先校验枚举结果一致，再预热/采样 10 次；本机一次样本穷举约 14.42ms、候选约 2.60ms，约 5.5 倍，仅代表该样本。
+- 界面证据：output/playwright/13-mobile-game.png、14-narrow-game.png、15-mobile-export.png；已查看 390/320px 英文棋盘/字母辅助/操作区与导出弹窗，发现提示遮挡后修正并再次复核。截图、房间文件及含身份的 invalid.tmp 备份均不入库。
+- 提交：待本地实现提交后回填；随后将 M11 置 done。
+- 遗留：物理手机/读屏软件、不同色觉体验、真实多设备/防火墙/多网卡与 Firefox/macOS/Linux 仍待现场验收；跨进程数据存储及断电目录持久性不作保证。AI 对手、官方双人/三人变体和公网对战不属于本轮范围。未 push、未创建 PR。

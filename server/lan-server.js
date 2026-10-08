@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 const game = require(path.join(ROOT, 'js', 'game.js'));
 const notation = require(path.join(ROOT, 'js', 'notation.js'));
+const {RoomStore, snapshot} = require('./room-store.js');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -95,16 +96,14 @@ function readBody(req) {
 
 function cleanRooms() {
   const now = Date.now();
-  for (const [id, room] of rooms) {
-    if (now - room.lastActivity > ROOM_TTL) {
-      for (const client of room.clients) {
-        try {
-          client.res.end();
-        } catch (e) { /* ignore */
-        }
-      }
-      rooms.delete(id);
-    }
+  const expired = [...rooms.values()].filter(r => now - r.lastActivity > ROOM_TTL);
+  if (!expired.length) return;
+  try {
+    transact(null, () => expired.forEach(r => rooms.delete(r.id)));
+    for (const room of expired)
+      for (const slot of room.slots) rejectClient(room, slot.token, 'expired');
+  } catch (_) {
+    console.error('房间清理未保存，已保留内存状态，等待重试。');
   }
 }
 setInterval(cleanRooms, 10 * 60 * 1000).unref();
@@ -166,36 +165,30 @@ function serveStatic(req, res, pathname) {
 /* ---------------- API ---------------- */
 
 /* 房间持久化只在 CLI 启动时启用；测试可使用无磁盘 createServer。 */
-let storePath = null;
+let roomStore = new RoomStore(null);
 let shareHosts = [];
 function saveRooms() {
-  if (!storePath) return;
-  const data = [...rooms.values()].map((r) => ({
-                                         id: r.id,
-                                         createdAt: r.createdAt,
-                                         lastActivity: r.lastActivity,
-                                         seatCount: r.seatCount,
-                                         hostSlot: r.hostSlot,
-                                         phase: r.phase,
-                                         lang: r.lang,
-                                         slots: r.slots,
-                                         state: r.state ? game.toJSON(r.state) : null
-                                       }));
-  fs.mkdirSync(path.dirname(storePath), {recursive: true});
-  fs.writeFileSync(storePath + '.tmp', JSON.stringify(data));
-  fs.renameSync(storePath + '.tmp', storePath);
+  roomStore.save(rooms);
 }
 function restoreRooms() {
-  if (!storePath || !fs.existsSync(storePath)) return;
+  for (const r of roomStore.load(ROOM_TTL)) rooms.set(r.id, r);
+}
+// 修改、落盘同步完成后才允许响应/广播；失败保持房间对象和 SSE 连接身份。
+function transact(room, change) {
+  const before = new Map(rooms);
+  const saved = room ? snapshot(room) : null;
   try {
-    for (const r of JSON.parse(fs.readFileSync(storePath, 'utf8'))) {
-      if (!/^[A-Z0-9]{4}$/.test(r.id) || Date.now() - r.lastActivity > ROOM_TTL) continue;
-      r.state = r.state ? game.fromJSON(r.state) : null;
-      r.clients = new Set();
-      rooms.set(r.id, r);
+    const result = change();
+    saveRooms();
+    return result;
+  } catch (e) {
+    rooms.clear();
+    for (const [id, r] of before) rooms.set(id, r);
+    if (room) {
+      Object.assign(room, saved);
+      room.state = saved.state ? game.fromJSON(saved.state) : null;
     }
-  } catch (_) {
-    console.error('无法恢复房间存档，请检查 server/rooms.json。');
+    throw e;
   }
 }
 function online(room, token) {
@@ -235,20 +228,21 @@ function settleDepartures(room) {
 }
 function depart(room, seat, reason) {
   const slot = room.slots[seat];
+  transact(room, () => {
+    if (room.phase === 'lobby') {
+      room.slots.splice(seat, 1);
+      if (seat < room.hostSlot)
+        room.hostSlot--;
+      else if (seat === room.hostSlot)
+        room.hostSlot = 0;
+    } else {
+      slot.left = true;
+      settleDepartures(room);
+      if (seat === room.hostSlot) room.hostSlot = room.slots.findIndex((s) => !s.left);
+    }
+    if (!room.slots.some((s) => !s.left)) rooms.delete(room.id);
+  });
   rejectClient(room, slot.token, reason);
-  if (room.phase === 'lobby') {
-    room.slots.splice(seat, 1);
-    if (seat < room.hostSlot)
-      room.hostSlot--;
-    else if (seat === room.hostSlot)
-      room.hostSlot = 0;
-  } else {
-    slot.left = true;
-    settleDepartures(room);
-    if (seat === room.hostSlot) room.hostSlot = room.slots.findIndex((s) => !s.left);
-  }
-  if (!room.slots.some((s) => !s.left)) rooms.delete(room.id);
-  saveRooms();
   notify(room);
 }
 async function handleApi(req, res, url) {
@@ -281,8 +275,7 @@ async function handleApi(req, res, url) {
       clients: new Set(),
       port: req.socket.localPort
     };
-    rooms.set(id, room);
-    saveRooms();
+    transact(null, () => rooms.set(id, room));
     json(
         res, 200,
         {ok: true, roomId: id, seat: 0, token, hostSlot: 0, totalSeats: seatCount, playerId: 'blue'});
@@ -303,6 +296,7 @@ async function handleApi(req, res, url) {
       json(res, 403, {ok: false, error: 'bad_token'});
       return true;
     }
+    if (rooms.get(room.id) !== room) throw Error('room_not_found');
     if (!b.token) {
       if (room.phase !== 'lobby') {
         json(res, 409, {ok: false, error: 'started'});
@@ -312,10 +306,12 @@ async function handleApi(req, res, url) {
         json(res, 409, {ok: false, error: 'full'});
         return true;
       }
-      room.slots.push({name: String(b.name || 'Player').slice(0, 12), token: newToken(), left: false});
+      transact(
+          room,
+          () => room.slots.push(
+              {name: String(b.name || 'Player').slice(0, 12), token: newToken(), left: false}));
       seat = room.slots.length - 1;
     }
-    saveRooms();
     const ids = game.SEATS[room.state ? room.state.seatCount : room.seatCount];
     json(res, 200, {
       ok: true,
@@ -330,6 +326,7 @@ async function handleApi(req, res, url) {
     return true;
   }
   const b = method === 'POST' ? await readBody(req) : {};
+  if (rooms.get(room.id) !== room) throw Error('room_not_found');
   const token = b.token || url.searchParams.get('token'), seat = seatIndexByToken(room, token);
   if (seat < 0 || room.slots[seat].left) {
     json(res, 403, {ok: false, error: 'bad_token'});
@@ -404,11 +401,12 @@ async function handleApi(req, res, url) {
     const hostToken = room.slots[room.hostSlot].token;
     const slots = room.slots.filter((s) => !s.left);
     if (slots.length < 2 && action === 'restart') {
-      room.slots = slots;
-      room.hostSlot = 0;
-      room.phase = 'lobby';
-      room.state = null;
-      saveRooms();
+      transact(room, () => {
+        room.slots = slots;
+        room.hostSlot = 0;
+        room.phase = 'lobby';
+        room.state = null;
+      });
       notify(room);
       json(res, 200, {ok: true});
       return true;
@@ -417,16 +415,17 @@ async function handleApi(req, res, url) {
       json(res, 409, {ok: false, error: 'not_enough'});
       return true;
     }
-    room.slots = slots;
-    room.hostSlot = slots.findIndex((s) => s.token === hostToken);
-    room.state = game.createGame({
-      mode: 'lan',
-      seatCount: slots.length,
-      players: slots.map((s) => ({name: s.name, controller: 'human'})),
-      lang: room.lang
+    transact(room, () => {
+      room.slots = slots;
+      room.hostSlot = slots.findIndex((s) => s.token === hostToken);
+      room.state = game.createGame({
+        mode: 'lan',
+        seatCount: slots.length,
+        players: slots.map((s) => ({name: s.name, controller: 'human'})),
+        lang: room.lang
+      });
+      room.phase = 'playing';
     });
-    room.phase = 'playing';
-    saveRooms();
     notify(room);
     json(res, 200, {ok: true});
     return true;
@@ -445,16 +444,16 @@ async function handleApi(req, res, url) {
       json(res, 409, {ok: false, error: 'not_your_turn'});
       return true;
     }
-    const result = game.applyAction(
-        room.state,
-        action === 'pass' ? {type: 'pass'} :
-                            {type: 'place', piece: b.piece, anchor: b.anchor, rot: b.rot, mirror: b.mirror});
-    if (!result.ok) {
-      json(res, 409, {ok: false, error: result.code});
-      return true;
-    }
-    settleDepartures(room);
-    saveRooms();
+    const result = transact(room, () => {
+      const result = game.applyAction(
+          room.state,
+          action === 'pass' ?
+              {type: 'pass'} :
+              {type: 'place', piece: b.piece, anchor: b.anchor, rot: b.rot, mirror: b.mirror});
+      if (!result.ok) throw Error(result.code);
+      settleDepartures(room);
+      return result;
+    });
     notify(room);
     json(res, 200, {ok: true, move: result.move});
     return true;
@@ -466,7 +465,7 @@ async function handleApi(req, res, url) {
 /* ---------------- 服务器 ---------------- */
 
 function createServer(options) {
-  storePath = options && options.storePath || null;
+  roomStore = new RoomStore(options && options.storePath || null);
   shareHosts = options && options.shareHosts || [];
   restoreRooms();
   return http.createServer(async (req, res) => {
@@ -483,7 +482,7 @@ function createServer(options) {
       }
       serveStatic(req, res, url.pathname);
     } catch (e) {
-      json(res, 400, {ok: false, error: e.message || 'bad_request'});
+      json(res, e.message === 'storage_failed' ? 503 : 400, {ok: false, error: e.message || 'bad_request'});
     }
   });
 }

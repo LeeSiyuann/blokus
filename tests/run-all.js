@@ -250,6 +250,8 @@ section('rules version compatibility');
 
 section('reliability');
 require('./reliability.js')(ok,eq);
+section('improvements');
+require('./improvements.js')(ok,eq);
 
 /* ---------- 结果 ---------- */
 console.log('\n----------------------------------------');

@@ -203,7 +203,7 @@ async function main() {
     check(String(exportText).startsWith('BKS1'), '导出文本棋谱为 BKS1');
     check(String(exportText).indexOf('1. B I1 A1') >= 0, '棋谱记录了第一步');
     await shot('04-export.png');
-    await evalJs("document.querySelector('#exportModal').classList.add('hidden')");
+    await evalJs("document.querySelector('#exportModal .modal-close').click()");
 
     // 退出 → 历史 → 未完成对局可直接继续
     await evalJs("document.querySelector('#btnExitGame').click()");
@@ -295,8 +295,54 @@ async function main() {
     check(await evalJs("!document.querySelector('#turnBanner img') && document.querySelector('#turnBanner').textContent.includes('<img src=x>')"), '玩家名按文本显示，不解释 HTML');
     await evalJs("document.querySelector('#btnExitGame').click();window.__count=BK.listGames().length;document.querySelector('#btnImport').click();const bad=BK.toJSONRecord(BK.createGame());bad.game.board[0][0]=0;document.querySelector('#importText').value=JSON.stringify(bad);document.querySelector('#btnDoImport').click()");
     check(await evalJs("BK.listGames().length===window.__count && document.querySelector('#toast').textContent.includes('Snapshot')"), '损坏棋谱拒绝且不新增存档');
-    await evalJs("document.querySelector('#importModal').classList.add('hidden');document.querySelector('#btnHistory').click()");
+    await evalJs("document.querySelector('#importModal .modal-close').click();document.querySelector('#btnHistory').click()");
     await shot('08-history-reliability.png');
+
+    const press = async (key,code,virtual) => {
+      await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:virtual,text:key==='Enter'?'\r':key===' '?' ':''});
+      await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:virtual});
+    };
+    await evalJs("document.querySelector('#btnHistoryBack').click();document.querySelector('#btnSingle').click();document.querySelector('#seatSeg [data-seats=\"4\"]').click();document.querySelector('#btnSetupStart').click();document.querySelector('[data-piece=\"I1\"]').click();document.querySelector('#boardAccess').focus()");
+    check(await evalJs("document.querySelectorAll('#boardAccess [role=gridcell]').length===400"),'读屏棋盘提供全部 400 格');
+    await press('ArrowRight','ArrowRight',39);
+    check(await evalJs("document.querySelector('#boardAccess').getAttribute('aria-activedescendant')==='boardCanvas-cell-1'"),'键盘方向键移动棋盘焦点');
+    await press('ArrowLeft','ArrowLeft',37);await press('Enter','Enter',13);
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===1"),'键盘 Enter 可合法落子');
+    const ax = await cdp.send('Accessibility.getFullAXTree');
+    check(ax.nodes.some(n=>!n.ignored && n.role?.value==='grid') && ax.nodes.some(n=>!n.ignored && n.role?.value==='gridcell' && n.name?.value?.includes('A1')),'真实浏览器可访问树含棋盘格子');
+    await evalJs("document.querySelector('#patternToggle').focus()");await press('Enter','Enter',13);
+    check(await evalJs("BK.getSettings().patternMode && document.querySelector('#patternToggle').getAttribute('aria-pressed')==='true'"),'按钮 Enter 启用并保存字母辅助');
+    await evalJs("document.querySelector('[data-piece=\"I2\"]').click();document.querySelector('#btnHint').click()");
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===1 && /可落子|Legal/.test(document.querySelector('#boardStatus').textContent)"),'落点提示只预览合法位置');
+    await evalJs("document.querySelector('#btnPlace').click()");
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===2"),'提示位置经确认后落子');
+    await evalJs("document.querySelector('#btnExport').focus();document.querySelector('#btnExport').click()");
+    check(await evalJs("document.querySelector('main').inert && document.activeElement.id==='exportText'"),'弹窗打开移入焦点并隔离背景');
+    await evalJs("document.querySelector('#btnDownloadExport').focus()");await press('Tab','Tab',9);
+    check(await evalJs("document.querySelector('#exportModal').contains(document.activeElement)"),'Tab 焦点限制在弹窗');
+    await press('Escape','Escape',27);
+    check(await evalJs("!document.querySelector('main').inert && document.activeElement.id==='btnExport'"),'Escape 关闭弹窗并恢复原焦点');
+    await evalJs("document.querySelector('#btnExitGame').click();document.querySelector('#btnSingle').click();document.querySelector('#btnSetupStart').click();document.querySelector('[data-piece=\"I1\"]').click();if(BK.getLang()!=='en')document.querySelector('#langToggle').click()");
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
+    await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    await sleep(200);
+    await evalJs("document.querySelector('#boardCanvas').scrollIntoView({block:'center'})");
+    const touchPoint = await evalJs(`(()=>{const c=document.querySelector('#boardCanvas'),r=c.getBoundingClientRect(),renderer=new BK.Renderer(c),{cssSize,pad,cell}=renderer.layout();return {x:r.left+(pad+cell/2)*r.width/cssSize,y:r.top+(pad+cell/2)*r.height/cssSize};})()`);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...touchPoint,radiusX:3,radiusY:3,force:1,id:0}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sleep(250);
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===0 && document.querySelector('#boardStatus').textContent.includes('Legal placement')"),'真实触屏事件先预览，不误落子');
+    await evalJs("document.querySelector('#btnPlace').click()");
+    check(await evalJs("BK.loadRecord(BK.getCurrent()).game.moves.length===1"),'触屏预览可确认落子');
+    check(await evalJs("document.documentElement.scrollWidth<=390 && document.querySelector('#btnPlace').getBoundingClientRect().bottom<=844"),'390px 英文布局不横溢出且确认按钮在屏内');
+    await shot('13-mobile-game.png');
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:320,height:568,deviceScaleFactor:2,mobile:true});await sleep(200);
+    check(await evalJs("document.documentElement.scrollWidth<=320 && document.querySelector('#btnPlace').getBoundingClientRect().height>=44"),'320px 窄屏无横溢出并保留触控目标');
+    check(await evalJs("(()=>{const t=document.querySelector('#toast'),r=t.getBoundingClientRect(),c=document.querySelector('#view-game .controls').getBoundingClientRect();return t.classList.contains('hidden') || r.bottom<=c.top})()"),'窄屏提示不遮挡底部操作区');
+    await shot('14-narrow-game.png');
+    await evalJs("document.querySelector('#btnExport').click()");
+    check(await evalJs("document.documentElement.scrollWidth<=320 && document.querySelector('#exportModal .modal-card').getBoundingClientRect().width<=320"),'窄屏导出弹窗不溢出');
+    check(await evalJs("getComputedStyle(document.querySelector('#toast')).pointerEvents==='none' && document.body.classList.contains('dialog-open')"),'弹窗提示不拦截复制与下载操作');
+    await shot('15-mobile-export.png');
 
     // 结果
     const failed = results.filter((r) => !r.ok);

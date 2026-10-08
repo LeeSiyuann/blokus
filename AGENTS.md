@@ -1,7 +1,7 @@
 # AGENTS.md — Blokus（角斗士棋）项目协作与执行规范
 
 > 本文件是本仓库的**最高优先级工作约定**。任何 agent（人或 AI）在本仓库操作前必须先阅读并遵守。
-> 最后更新：2026-10-08（v1.2）
+> 最后更新：2026-10-09（v1.3）
 
 ## 1. 项目目标
 
@@ -26,7 +26,7 @@
 | R11 | 导出棋谱 | 文本棋谱 + JSON，可复制/下载/导入 |
 | R12 | AI 预留设计 | `docs/AI-EXTENSION.md` 含接口参数表与挂载点 |
 
-当前完成情况、自动化证据与现场验收边界见 `docs/REQUIREMENTS.md`（M10，2026-10-08）。
+当前完成情况、自动化证据与现场验收边界见 `docs/REQUIREMENTS.md`（M11，2026-10-09）。
 
 ## 3. 技术约束（不可违反）
 
@@ -78,7 +78,11 @@ js/i18n.js            中英文词条与切换
 js/sound.js           WebAudio 合成音效（默认开）
 js/net.js             局域网客户端（SSE + REST）
 js/ui.js              界面总控（视图路由、事件绑定）
+js/ui-records.js      历史、棋谱、备份与回放控制器
+js/ui-lan.js          大厅与联机生命周期控制器
+js/ui-accessibility.js 键盘、触控、读屏棋盘与弹窗焦点
 server/lan-server.js  零依赖局域网服务（静态托管 + 房间 + 裁判）
+server/room-store.js  快照原子替换、恢复校验与坏房间隔离
 scripts/start-lan.js  启动辅助（os 发现地址、child_process 打开浏览器；不混入服务核心）
 scripts/              启动脚本（Windows/macOS/Linux）
 tests/                Node 直跑的零依赖测试
@@ -94,12 +98,14 @@ npm run test:all                 # 单元 + 自检 + 服务可靠性 + 单机/�
 node tests/server-reliability.js # 鉴权/重启恢复/离席/踢人/房主转移/再战
 node tests/browser-smoke.js      # 浏览器界面冒烟（启动器/对局/存档/导出/回放）
 node tests/browser-lan-smoke.js  # 局域网端到端（两个页面同房对局）
+npm run benchmark               # 合法枚举与独立穷举等价/固定局面耗时
 ```
 
 浏览器验证：`index.html`（单机/回放）与 `http://localhost:8765/`（联网）。
 截图输出：`output/playwright/`（已 gitignore，仅作验收证据，不入库）。
 
 运行服务/单元测试需 Node 18+，浏览器测试使用 Node 22+ 内置 WebSocket。CLI 房间快照 `server/rooms.json` 含连接身份，始终 gitignore；公开棋谱/全量浏览器备份不包含 token。
+恢复损坏数据原文保留为 `server/rooms.json.invalid.tmp`，同样含身份且 gitignore；坏房间隔离，整个 JSON 损坏时停止启动，避免覆盖。仅支持一个服务进程管理一套房间快照。
 
 ## 7. MCP 规划与完成记录
 

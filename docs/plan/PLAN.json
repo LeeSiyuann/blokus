@@ -1,6 +1,6 @@
 {
   "project": "blokus",
-  "updatedAt": "2026-10-08",
+  "updatedAt": "2026-10-09",
   "rules": {
     "protocol": "每次操作：登记(doing) -> 实现 -> 测试 -> 文档 -> 日志 -> commit -> 置 done 并写 commit hash",
     "prPolicy": "仅当用户明确提示时创建 PR/MR，由用户合入"
@@ -139,6 +139,13 @@
         "docs",
         "README.md"
       ]
+    },
+    {
+      "id": "M11",
+      "title": "落实移动与无障碍、规则性能、UI模块拆分及服务存储事务改进",
+      "status": "doing",
+      "commit": null,
+      "deliverables": ["js", "server", "styles.css", "index.html", "tests", "docs", "README.md" ]
     }
   ]
 }

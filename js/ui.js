@@ -35,6 +35,38 @@ const app = {
   lastEnd: null
 };
 
+const uiContext = {
+  $,
+  app,
+  BKNS,
+  t,
+  renderBoard,
+  renderReplayBoard,
+  tryPlaceAt,
+  errText,
+  $$,
+  setLang,
+  applyI18n,
+  toast,
+  showView,
+  colorOf,
+  modeLabel,
+  refreshLauncher,
+  saveGame,
+  renderGame,
+  renderPlayersPanel,
+  escapeHtml,
+  asState,
+  updateTopBar,
+  PLAYER_ORDER,
+  isFileProtocol,
+  showGameOver,
+  closeModal
+};
+const accessibility = BKNS.createAccessibilityUI(uiContext);
+const recordsUI = BKNS.createRecordsUI({...uiContext, accessibility});
+const lanUI = BKNS.createLanUI(uiContext);
+
 /* ---------------- 基础工具 ---------------- */
 
 let toastTimer = null;
@@ -47,7 +79,9 @@ function toast(msg) {
 }
 
 function showView(name) {
+  const changed = document.body.dataset.view !== name;
   document.body.dataset.view = name;
+  accessibility.showView(name, changed);
   if (name !== 'replay' && app.replay && app.replay.playing) app.replay.pause();
   if (name === 'game') setTimeout(() => renderBoard(), 30);
   if (name === 'replay') setTimeout(() => renderReplayBoard(), 30);
@@ -125,6 +159,8 @@ function buildNameInputs(seatCount) {
     const dot = document.createElement('span');
     dot.className = 'name-dot';
     dot.style.background = colorOf(PLAYER_ORDER[slot]);
+    dot.dataset.color = PLAYER_ORDER[slot];
+    dot.textContent = {blue: 'B', yellow: 'Y', red: 'R', green: 'G'}[PLAYER_ORDER[slot]];
     const input = document.createElement('input');
     input.type = 'text';
     input.maxLength = 12;
@@ -132,6 +168,7 @@ function buildNameInputs(seatCount) {
     input.value = old && old.value !== old.defaultName ? old.value : (names[slot] || ('P' + (i + 1)));
     input.dataset.defaultName = names[slot];
     input.dataset.slot = String(slot);
+    input.setAttribute('aria-label', t('color.' + PLAYER_ORDER[slot]) + ' · ' + t('lan.name'));
     row.appendChild(dot);
     row.appendChild(input);
     wrap.appendChild(row);
@@ -194,8 +231,11 @@ function renderBoard() {
     return;
   }
   const preview = buildPreview();
-  app.renderer.setState(app.state, {preview});
+  app.renderer.setState(
+      app.state,
+      {preview, patternMode: app.settings.patternMode, cursor: accessibility.cursor('boardCanvas')});
   app.renderer.draw();
+  accessibility.updateBoard('boardCanvas', app.state, preview);
 }
 
 function buildPreview() {
@@ -215,6 +255,7 @@ function selectPiece(id) {
   BKNS.Sound.play('select');
   renderTray();
   renderBoard();
+  $('#btnHint').disabled = !canLocalAct();
 }
 
 function rotateSelected() {
@@ -345,6 +386,7 @@ function renderGame() {
   $('#netStatus').classList.toggle('hidden', s.mode !== 'lan');
   $('#btnUndo').disabled = s.mode === 'lan' || !s.moves.length || s.status === 'finished';
   $('#btnPlace').disabled = !my;
+  $('#btnHint').disabled = !my || !app.selected;
   $('#btnRotate').disabled = !my || !app.selected;
   $('#btnFlip').disabled = !my || !app.selected;
   $('#btnExport').disabled = false;
@@ -363,6 +405,9 @@ function renderPlayersPanel(host, s) {
     const sw = document.createElement('span');
     sw.className = 'player-swatch';
     sw.style.background = colorOf(p.id);
+    sw.dataset.color = p.id;
+    sw.textContent = {blue: 'B', yellow: 'Y', red: 'R', green: 'G'}[p.id];
+    sw.setAttribute('aria-label', t('color.' + p.id));
     const name = document.createElement('span');
     name.className = 'player-name';
     const isMe = s.mode === 'lan' && i === app.lan.seat;
@@ -404,6 +449,7 @@ function renderPlayersPanel(host, s) {
 
 function renderTray() {
   const host = $('#tray');
+  const focusedPiece = host.contains(document.activeElement) ? document.activeElement.dataset.piece : null;
   if (!app.state) return;
   const s = app.state;
   let seatIdx;
@@ -425,6 +471,9 @@ function renderTray() {
     const btn = document.createElement('button');
     btn.className = 'tray-piece' + (app.selected === id ? ' selected' : '');
     btn.dataset.piece = id;
+    btn.setAttribute('aria-label', t('access.piece', {id, n: BKNS.PIECES[id].size}));
+    btn.setAttribute('aria-pressed', String(app.selected === id));
+    btn.disabled = !canLocalAct();
     const canvas = document.createElement('canvas');
     const label = document.createElement('span');
     label.textContent = id;
@@ -436,6 +485,7 @@ function renderTray() {
         () => BKNS.drawPieceThumb(
             canvas, id, colorId, app.selected === id ? app.rot : 0, app.selected === id ? app.mirror : 0));
   }
+  if (focusedPiece) host.querySelector('[data-piece="' + focusedPiece + '"]')?.focus({preventScroll: true});
 }
 
 function showGameOver() {
@@ -478,541 +528,114 @@ function asState(src) {
   }
 }
 
-/* ---------------- 导出 / 导入 ---------------- */
-
-function openModal(id) {
-  $('#' + id).classList.remove('hidden');
+function openModal(...args) {
+  return recordsUI.openModal(...args);
 }
-function closeModal(id) {
-  $('#' + id).classList.add('hidden');
+function closeModal(...args) {
+  return recordsUI.closeModal(...args);
 }
-
-function exportContent() {
-  const src = asState(app.exportSource || app.state);
-  if (!src) return '';
-  if (app.exportFmt === 'json') return JSON.stringify(BKNS.toJSONRecord(src), null, 2);
-  return BKNS.toText(src);
+function exportContent(...args) {
+  return recordsUI.exportContent(...args);
 }
-
-function openExport(state) {
-  app.exportSource = asState(state || app.state);
-  app.exportFmt = 'text';
-  $$('#exportSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.fmt === 'text'));
-  $('#exportText').value = exportContent();
-  openModal('exportModal');
+function openExport(...args) {
+  return recordsUI.openExport(...args);
 }
-
-function download(filename, content) {
-  const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 500);
+function download(...args) {
+  return recordsUI.download(...args);
 }
-
-async function copyText(text) {
-  let copied = false;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    }
-  } catch (_) {
-  }
-  if (!copied) {
-    const area = document.createElement('textarea');
-    area.value = text;
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
-    document.body.appendChild(area);
-    area.select();
-    try {
-      copied = document.execCommand('copy');
-    } catch (_) {
-    }
-    area.remove();
-  }
-  toast(copied ? t('export.copied') : t('toast.copyFail'));
-  return copied;
+function copyText(...args) {
+  return recordsUI.copyText(...args);
+}
+function importFromText(...args) {
+  return recordsUI.importFromText(...args);
+}
+function handleImported(...args) {
+  return recordsUI.handleImported(...args);
+}
+function renderHistory(...args) {
+  return recordsUI.renderHistory(...args);
+}
+function openRecord(...args) {
+  return recordsUI.openRecord(...args);
+}
+function openReplay(...args) {
+  return recordsUI.openReplay(...args);
+}
+function buildReplayInfo(...args) {
+  return recordsUI.buildReplayInfo(...args);
+}
+function renderReplayBoard(...args) {
+  return recordsUI.renderReplayBoard(...args);
 }
 
-function importFromText(text) {
-  const raw = String(text || '').trim();
-  if (raw.length > 12 * 1024 * 1024) {
-    toast(errText('too_large'));
-    return null;
-  }
-  try {
-    if (raw[0] === '{') {
-      const obj = JSON.parse(raw);
-      return obj.format === 'blokus-backup' ? {backup: obj} : BKNS.fromJSONRecord(obj);
-    }
-    const parsed = BKNS.parseText(raw);
-    if (!parsed.ok) throw new Error(parsed.error);
-    return parsed.state;
-  } catch (e) {
-    toast(t('export.invalid', {reason: errText(e.message)}));
-    return null;
-  }
+function savedConnection(...args) {
+  return lanUI.savedConnection(...args);
 }
-
-function handleImported(state) {
-  if (!state) return;
-  if (state.backup) {
-    const res = BKNS.importBackup(state.backup);
-    if (!res.ok) {
-      toast(t('storage.invalidBackup'));
-      return;
-    }
-    app.settings = BKNS.getSettings();
-    setLang(app.settings.lang);
-    BKNS.Sound.setEnabled(app.settings.sound);
-    applyI18n();
-    updateTopBar();
-    closeModal('importModal');
-    toast(t('storage.backupOk'));
-    renderHistory();
-    showView('history');
-    return;
-  }
-  const res = BKNS.saveRecord(BKNS.toJSONRecord(state));
-  if (!res.ok) {
-    toast(t('storage.' + res.code));
-    return;
-  }
-  closeModal('importModal');
-  toast(t('toast.importOk'));
-  if (state.status === 'finished' || state.rulesVersion === 1 || state.mode === 'lan')
-    openReplay(BKNS.toJSON(state));
-  else {
-    app.state = state;
-    app.selected = null;
-    showView('game');
-    renderGame();
-    saveGame();
-  }
+function persistConnection(...args) {
+  return lanUI.persistConnection(...args);
 }
-
-function renderHistory() {
-  const list = BKNS.listGames(app.trash).filter((x) => app.trash ? !!x.deletedAt : true);
-  const host = $('#historyList');
-  host.innerHTML = '';
-  if (!list.length) {
-    host.innerHTML = '<p class="muted">' + t('history.empty') + '</p>';
-    return;
-  }
-  for (const item of list) {
-    const el = document.createElement('div');
-    el.className = 'history-item';
-    const meta = document.createElement('div');
-    meta.className = 'history-meta';
-    const title = document.createElement('div');
-    title.className = 'history-title';
-    title.textContent = (item.players || []).join(' vs ');
-    const sub = document.createElement('div');
-    sub.className = 'history-sub';
-    const d = new Date(item.updatedAt || item.createdAt);
-    sub.textContent = d.toLocaleString(app.settings.lang === 'zh' ? 'zh-CN' : 'en-US') + ' · ' +
-        t('history.mode_' + (item.mode || 'hotseat')) + ' · ' + modeLabel(item) + ' · ' + item.moves + ' ' +
-        t('history.moves') + ' · ' + t('history.status_' + (item.status || 'playing'));
-    meta.appendChild(title);
-    meta.appendChild(sub);
-    if (item.scores) {
-      const scoreLine = document.createElement('div');
-      scoreLine.className = 'score-line';
-      (item.colors || []).forEach((cid, i) => {
-        const sp = document.createElement('span');
-        sp.innerHTML = '<span class="name-dot" style="background:' + colorOf(cid) + '"></span>' +
-            escapeHtml((item.players || [])[i] || '') + ' ' + item.scores[cid];
-        scoreLine.appendChild(sp);
-      });
-      meta.appendChild(scoreLine);
-    }
-    const actions = document.createElement('div');
-    actions.className = 'row';
-    const btnView = document.createElement('button');
-    btnView.className = 'btn';
-    btnView.textContent = t('history.view');
-    if (app.trash) btnView.textContent = t('storage.restore');
-    btnView.addEventListener('click', () => {
-      if (app.trash) {
-        const res = BKNS.restoreGame(item.id);
-        if (!res.ok) toast(t('storage.' + res.code));
-        renderHistory();
-        refreshLauncher();
-      } else
-        openRecord(item.id);
-    });
-    const btnDel = document.createElement('button');
-    btnDel.className = 'btn ghost';
-    btnDel.textContent = t('history.delete');
-    btnDel.addEventListener('click', () => {
-      if (confirm(t('history.deleteConfirm'))) {
-        BKNS.deleteGame(item.id);
-        toast(t('toast.deleted'));
-        renderHistory();
-        refreshLauncher();
-      }
-    });
-    actions.appendChild(btnView);
-    if (!app.trash) actions.appendChild(btnDel);
-    el.appendChild(meta);
-    el.appendChild(actions);
-    host.appendChild(el);
-  }
+function clearConnection(...args) {
+  return lanUI.clearConnection(...args);
 }
-
-function openRecord(id) {
-  const rec = BKNS.loadRecord(id);
-  if (!rec || !rec.game) return;
-  try {
-    const state = BKNS.fromJSON(rec.game);
-    if (state.mode === 'lan' || state.rulesVersion === 1 || state.status === 'finished') {
-      openReplay(BKNS.toJSON(state));
-      return;
-    }
-    app.state = state;
-    app.selected = null;
-    showView('game');
-    renderGame();
-    saveGame();
-  } catch (e) {
-    toast(t('export.invalid', {reason: errText(e.message)}));
-  }
+function lobbyLink(...args) {
+  return lanUI.lobbyLink(...args);
 }
-
-function openReplay(gameJson) {
-  app.replaySource = gameJson;
-  if (app.replay) app.replay.dispose();
-  app.replay = new BKNS.ReplayPlayer(gameJson, {
-    onUpdate: (state, index, total, playing) => {
-      if (document.body.dataset.view !== 'replay') return;
-      app.replayState = state;
-      $('#replayMode').textContent = modeLabel(state);
-      $('#replaySlider').max = String(total);
-      $('#replaySlider').value = String(index);
-      $('#btnPlay').textContent = playing ? '⏸' : '▶';
-      $('#btnPlay').title = t(playing ? 'replay.pause' : 'replay.play');
-      $('#replayInfo').innerHTML = buildReplayInfo(gameJson, state, index, total);
-      renderPlayersPanel($('#replayPlayers'), state);
-      renderReplayBoard();
-    }
-  });
-  showView('replay');
-  app.replay.seek(0);
+function connectionStatus(...args) {
+  return lanUI.connectionStatus(...args);
 }
-
-function buildReplayInfo(gameJson, state, index, total) {
-  const moves = gameJson.moves || [];
-  let html = '<b>' + escapeHtml((gameJson.players || []).map((p) => p.name).join(' vs ')) + '</b>';
-  html += '<small>' + (index === 0 ? t('replay.init') : t('replay.step', {n: index, total})) + '</small>';
-  if (index > 0 && moves[index - 1]) {
-    const m = moves[index - 1];
-    const p = gameJson.players[m.player];
-    if (m.type === 'pass' || m.type === 'resign') {
-      html += '<div class="move-detail">' + escapeHtml(p.name) + ' · ' +
-          t(m.type === 'resign' ? 'game.resign' : 'replay.pass') + '</div>';
-    } else {
-      html += '<div class="move-detail">' + escapeHtml(p.name) + ' · <b>' + m.piece + '</b> @ ' +
-          BKNS.pos(m.anchor) + ' · R' + (m.rot || 0) + ' M' + (m.mirror ? 1 : 0) + '</div>';
-    }
-  }
-  if (state.status === 'finished' && index === total) {
-    const res = state.result;
-    const winners = res.winners || [res.ranking[0]];
-    const names = winners.map((id) => state.players.find((p) => p.id === id).name).join(' / ');
-    html += '<div class="move-detail">' + t(winners.length > 1 ? 'game.tie' : 'game.winner') + ': <b>' +
-        escapeHtml(names) + '</b> (' + res.scores[winners[0]] + ')</div>';
-  }
-  return html;
+function applyLanPayload(...args) {
+  return lanUI.applyLanPayload(...args);
 }
-
-function renderReplayBoard() {
-  if (!app.replayRenderer) return;
-  if (!app.replayState) {
-    app.replayRenderer.setState(null);
-    app.replayRenderer.draw();
-    return;
-  }
-  app.replayRenderer.setState(app.replayState, {});
-  app.replayRenderer.draw();
+function renderLobby(...args) {
+  return lanUI.renderLobby(...args);
 }
-
-/* ---------------- 联机 ---------------- */
-
-function savedConnection(tabOnly) {
-  try {
-    const raw = sessionStorage.getItem('blokus.connection');
-    if (raw) return JSON.parse(raw);
-  } catch (_) {
-  }
-  return tabOnly ? null : BKNS.getConnection();
+function createRoom(...args) {
+  return lanUI.createRoom(...args);
 }
-function persistConnection() {
-  const value = {roomId: app.net.roomId, token: app.net.token, base: app.net.base};
-  try {
-    sessionStorage.setItem('blokus.connection', JSON.stringify(value));
-  } catch (_) {
-  }
-  const res = BKNS.setConnection(value);
-  if (!res.ok) toast(t('storage.' + res.code));
+function joinRoom(...args) {
+  return lanUI.joinRoom(...args);
 }
-function clearConnection() {
-  try {
-    sessionStorage.removeItem('blokus.connection');
-  } catch (_) {
-  }
-  BKNS.setConnection(null);
+function resumeConnection(...args) {
+  return lanUI.resumeConnection(...args);
 }
-function lobbyLink(roomId) {
-  try {
-    const url = new URL($('#lanAddress').value);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
-      return '';
-    return url.origin + '/?room=' + encodeURIComponent(roomId);
-  } catch (_) {
-    return '';
-  }
+function connectRoom(...args) {
+  return lanUI.connectRoom(...args);
 }
-function connectionStatus(status) {
-  app.connectionStatus = status;
-  $('#netStatus').textContent = t('game.' + (status === 'connected' ? 'connected' : 'disconnected')) +
-      (status === 'reconnecting' ? ' · ' + t('lan.reconnecting') : '');
-  if (document.body.dataset.view === 'game' && app.state) renderGame();
+function startLanGame(...args) {
+  return lanUI.startLanGame(...args);
 }
-function applyLanPayload(payload) {
-  if (!payload) return;
-  if (payload.self !== undefined) {
-    if (payload.self < 0) return;
-    app.lan.seat = payload.self;
-  }
-  const previous = app.state;
-  app.lan.phase = payload.phase;
-  app.lan.seats = payload.seats || [];
-  app.lan.hostSlot = payload.hostSlot;
-  app.lan.roomId = payload.roomId;
-  app.lan.totalSeats = payload.totalSeats;
-  if (payload.shareUrls && payload.shareUrls.length && !$('#lanAddress').value)
-    $('#lanAddress').value = payload.shareUrls[0];
-  if (payload.phase === 'lobby') {
-    renderLobby();
-    showView('lobby');
-    return;
-  }
-  if (payload.state) {
-    app.state = BKNS.fromJSON(payload.state);
-    app.state.server = {roomId: app.lan.roomId, seat: app.lan.seat};
-    const changed =
-        !previous || previous.id !== app.state.id || previous.moves.length !== app.state.moves.length;
-    if (changed) {
-      app.selected = null;
-      app.hover = null;
-    }
-    if (previous && previous.id === app.state.id && app.state.moves.length > previous.moves.length) {
-      const last = app.state.moves.at(-1);
-      BKNS.Sound.play(last.type === 'place' ? 'place' : 'pass');
-    }
-    showView('game');
-    renderGame();
-    saveGame();
-    if (app.state.status === 'finished') {
-      if (app.lastEnd !== app.state.id) {
-        app.lastEnd = app.state.id;
-        BKNS.Sound.play('win');
-        showGameOver();
-      }
-    } else {
-      closeModal('overModal');
-      app.lastEnd = null;
-    }
-  }
-}
-function renderLobby() {
-  $('#lobbyCode').textContent = app.lan.roomId || '----';
-  $('#lobbyLink').textContent = lobbyLink(app.lan.roomId) || t('lan.noAddress');
-  $('#btnCopyLink').disabled = !lobbyLink(app.lan.roomId);
-  const host = $('#lobbyPlayers');
-  host.innerHTML = '';
-  const total = app.lan.totalSeats || 4;
-  $('#lobbyMode').textContent = t('mode.hint');
-  const seatMap = BKNS.SEATS[total];
-  for (let i = 0; i < total; i++) {
-    const seat = app.lan.seats.find((s) => s.slot === i), chip = document.createElement('div');
-    chip.className = 'player-chip';
-    const sw = document.createElement('span');
-    sw.className = 'player-swatch';
-    sw.style.background = colorOf(PLAYER_ORDER[seatMap[i]]);
-    const name = document.createElement('span');
-    name.className = 'player-name';
-    name.textContent = seat ? seat.name : '—';
-    const stat = document.createElement('span');
-    stat.className = 'player-stat';
-    stat.textContent = seat ? (i === app.lan.hostSlot ? t('lan.host') + ' · ' : '') +
-            t(seat.online ? 'lan.online' : 'lan.offline') :
-                              '';
-    chip.append(sw, name, stat);
-    if (seat && app.lan.seat === app.lan.hostSlot && i !== app.lan.seat) {
-      const kick = document.createElement('button');
-      kick.className = 'btn ghost';
-      kick.textContent = t('lan.kick');
-      kick.addEventListener('click', () => app.net.kick(i).catch((e) => toast(errText(e.code))));
-      chip.append(kick);
-    }
-    host.append(chip);
-  }
-  $('#btnLobbyStart').classList.toggle('hidden', app.lan.hostSlot !== app.lan.seat);
-  $('#btnLobbyStart').disabled = app.lan.seats.length < 2;
-  $('#lobbyStatus').textContent = !lobbyLink(app.lan.roomId) ?
-      t('lan.noAddress') :
-      t(app.lan.hostSlot === app.lan.seat ? 'lan.hint' : 'lan.joined');
-}
-async function createRoom() {
-  if (isFileProtocol()) {
-    toast(t('lan.needServer'));
-    return;
-  }
-  try {
-    app.net = new BKNS.NetClient();
-    const data = await app.net.createRoom({
-      name: $('#lanName').value.trim() || t('app.title'),
-      lang: app.settings.lang,
-      seatCount: Number($('#lanSeats').value)
-    });
-    Object.assign(
-        app.lan,
-        {roomId: data.roomId, seat: data.seat, hostSlot: data.hostSlot, totalSeats: data.totalSeats});
-    persistConnection();
-    BKNS.Sound.play('join');
-    connectRoom();
-  } catch (e) {
-    toast(errText(e.code));
-  }
-}
-async function joinRoom() {
-  if (isFileProtocol()) {
-    toast(t('lan.needServer'));
-    return;
-  }
-  const code = $('#lanRoomCode').value.trim().toUpperCase();
-  if (!code) {
-    toast(t('lan.roomCode'));
-    return;
-  }
-  try {
-    app.net = new BKNS.NetClient();
-    const data = await app.net.joinRoom({roomId: code, name: $('#lanName').value.trim() || t('app.title')});
-    Object.assign(
-        app.lan,
-        {roomId: data.roomId, seat: data.seat, hostSlot: data.hostSlot, totalSeats: data.totalSeats});
-    persistConnection();
-    BKNS.Sound.play('join');
-    connectRoom();
-  } catch (e) {
-    toast(errText(e.code));
-  }
-}
-async function resumeConnection() {
-  const saved = savedConnection();
-  if (!saved || isFileProtocol()) return;
-  try {
-    app.net = new BKNS.NetClient(saved.base);
-    const data = await app.net.joinRoom({roomId: saved.roomId, token: saved.token});
-    Object.assign(
-        app.lan,
-        {roomId: data.roomId, seat: data.seat, hostSlot: data.hostSlot, totalSeats: data.totalSeats});
-    connectRoom();
-  } catch (e) {
-    if (['room_not_found', 'bad_token'].includes(e.code)) clearConnection();
-    toast(errText(e.code));
-    refreshLauncher();
-  }
-}
-function connectRoom() {
-  app.state = null;
-  connectionStatus('reconnecting');
-  app.net.connect(
-      (type, payload) => {
-        if (type === 'removed') {
-          app.net.reset();
-          clearConnection();
-          closeModal('overModal');
-          app.state = null;
-          connectionStatus('disconnected');
-          toast(t(payload.reason === 'kicked' ? 'lan.kicked' : 'lan.left'));
-          refreshLauncher();
-          showView('launcher');
-          return;
-        }
-        applyLanPayload(payload);
-      },
-      (status) => {
-        connectionStatus(status);
-        if (status === 'reconnecting' && !app.recovering) {
-          app.recovering = true;
-          app.net.joinRoom({roomId: app.net.roomId, token: app.net.token})
-              .catch((e) => {
-                if (['room_not_found', 'bad_token'].includes(e.code)) {
-                  app.net.reset();
-                  clearConnection();
-                  app.state = null;
-                  toast(errText(e.code));
-                  refreshLauncher();
-                  showView('launcher');
-                }
-              })
-              .finally(() => {
-                app.recovering = false;
-              });
-        }
-      });
-  renderLobby();
-  showView('lobby');
-}
-async function startLanGame() {
-  try {
-    await app.net.start();
-  } catch (e) {
-    toast(errText(e.code));
-  }
-}
-async function leaveRoom() {
-  try {
-    if (app.net && app.net.roomId) await app.net.leave();
-  } catch (e) {
-    if (e.code === 'network_error') {
-      app.net.disconnect();
-      app.state = null;
-      connectionStatus('disconnected');
-      closeModal('overModal');
-      toast(errText(e.code));
-      refreshLauncher();
-      showView('launcher');
-      return;
-    }
-    if (!['room_not_found', 'bad_token'].includes(e.code)) {
-      toast(errText(e.code));
-      return;
-    }
-  }
-  if (app.net) app.net.reset();
-  clearConnection();
-  app.lan = {roomId: null, seat: 0, hostSlot: 0, seats: [], phase: 'lobby'};
-  app.state = null;
-  connectionStatus('disconnected');
-  closeModal('overModal');
-  refreshLauncher();
-  showView('launcher');
+function leaveRoom(...args) {
+  return lanUI.leaveRoom(...args);
 }
 
 /* ---------------- 事件绑定 ---------------- */
 
 function bindEvents() {
+  accessibility.bind();
+  $('#patternToggle').addEventListener('click', () => {
+    app.settings = BKNS.setSettings({patternMode: !app.settings.patternMode});
+    if (!app.settings.saved) toast(t('storage.storage_unavailable'));
+    updateTopBar();
+    renderBoard();
+    renderReplayBoard();
+  });
+  $('#btnHint').addEventListener('click', () => {
+    if (!app.selected || !canLocalAct()) return;
+    const placements = BKNS.legalPlacements(app.state, app.state.turn, app.selected);
+    if (!placements.length) {
+      toast(t('access.noHint'));
+      return;
+    }
+    const key = app.state.id + ':' + app.state.moves.length + ':' + app.selected;
+    const i = app.hintKey === key ? (app.hintIndex + 1) % placements.length : 0;
+    app.hintKey = key;
+    app.hintIndex = i;
+    const move = placements[i];
+    app.rot = move.rot;
+    app.mirror = move.mirror;
+    renderTray();
+    accessibility.previewAt({r: move.anchor[0], c: move.anchor[1]});
+  });
   $('#langToggle').addEventListener('click', () => {
     const next = app.settings.lang === 'zh' ? 'en' : 'zh';
     app.settings = BKNS.setSettings({lang: next});
@@ -1089,25 +712,13 @@ function bindEvents() {
     saveGame();
   });
 
-  const canvas = $('#boardCanvas');
-  canvas.addEventListener('pointermove', (e) => {
-    const cell = app.renderer.toCell(e.clientX, e.clientY);
-    app.hover = cell;
-    renderBoard();
-  });
-  canvas.addEventListener('pointerleave', () => {
-    app.hover = null;
-    renderBoard();
-  });
-  canvas.addEventListener('click', (e) => {
-    const cell = app.renderer.toCell(e.clientX, e.clientY);
-    if (cell) tryPlaceAt(cell.r, cell.c);
-  });
   window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (document.body.dataset.view !== 'game' || e.target.closest('input,textarea,select') ||
         document.querySelector('.modal:not(.hidden)'))
       return;
     const k = e.key.toLowerCase();
+    if ((k === 'enter' || k === ' ') && e.target.closest('button,[role=grid]')) return;
     if (['r', 'f', 'escape', 'enter', ' ', 'p'].includes(k)) e.preventDefault();
     if (k === 'r') {
       rotateSelected();
@@ -1187,7 +798,7 @@ function bindEvents() {
 
   $$('.modal-close').forEach((b) => b.addEventListener('click', () => closeModal(b.dataset.close)));
   $$('.modal').forEach((m) => m.addEventListener('click', (e) => {
-    if (e.target === m) m.classList.add('hidden');
+    if (e.target === m) closeModal(m.id);
   }));
 
   $('#exportSeg').addEventListener('click', (e) => {
@@ -1258,6 +869,8 @@ function bindEvents() {
 }
 
 function updateTopBar() {
+  $('#patternToggle').textContent = t('access.pattern');
+  $('#patternToggle').setAttribute('aria-pressed', String(!!app.settings.patternMode));
   $('#soundToggle').textContent = BKNS.Sound.isEnabled() ? '🔊' : '🔇';
   $('#soundToggle').setAttribute('aria-pressed', String(BKNS.Sound.isEnabled()));
   $('#soundToggle').setAttribute('aria-label', t(BKNS.Sound.isEnabled() ? 'sound.on' : 'sound.off'));

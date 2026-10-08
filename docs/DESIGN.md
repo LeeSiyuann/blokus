@@ -1,17 +1,20 @@
 # 设计文档（DESIGN）
 
-> 版本：v1.1 ｜ 日期：2026-10-08 ｜ 本文描述实际实现；AI 预留方案见 AI-EXTENSION.md
+> 版本：v1.2 ｜ 日期：2026-10-09 ｜ 本文描述实际实现；AI 预留方案见 AI-EXTENSION.md
 
 ## 1. 架构与模块
 
 原生 HTML/CSS、Canvas 2D、传统 script；单机兼容 file://。pieces/rules/game/notation 同时导出 window.BK 与 module.exports，浏览器与服务端复用同一规则和状态机。
 
 ```
-index.html → ui.js（启动器 / 对局 / 历史 / 回放）
+index.html → ui.js（路由 / 对局 / 控制器协调）
+                ├─ ui-records.js（棋谱 / 历史 / 回放）
+                ├─ ui-lan.js（大厅 / 联机生命周期）
+                ├─ ui-accessibility.js（键盘 / 触控 / 读屏 / 焦点）
                 ├─ render.js / replay.js / net.js / storage.js
                 ├─ i18n.js / sound.js
                 └─ notation.js / game.js → rules.js → pieces.js
-server/lan-server.js → game.js / notation.js（REST + SSE + 房间存盘）
+server/lan-server.js → game.js / notation.js / room-store.js（REST + SSE + 房间事务存盘）
 scripts/start-lan.js → 服务 main()（地址发现 / 打开浏览器）
 ```
 
@@ -27,6 +30,8 @@ scripts/start-lan.js → 服务 main()（地址发现 / 打开浏览器）
 | i18n / sound | t/setLang/getLang/applyI18n；BK.Sound.play/setEnabled/isEnabled/unlock |
 | net | NetClient（createRoom/joinRoom/start/restart/leave/kick/move/pass/record/connect/reset） |
 | ui | 私有 app 状态和事件绑定；没有公开 BK.App 调度接口 |
+| ui-records / ui-lan / ui-accessibility | BK.createRecordsUI(ctx) / createLanUI(ctx) / createAccessibilityUI(ctx)，通过显式上下文共享状态和回调；不提供独立游戏调度器 |
+| room-store | RoomStore.save/load、snapshot；Node 内置 fs，私有服务持久化，非浏览器模块 |
 | server | createServer({storePath,shareHosts})、main(options)、rooms；CLI --port/--host/--advertise/--selftest |
 
 服务核心只使用 Node 内置 http/crypto/fs/path（URL 使用全局构造器）；os/child_process 只在启动辅助中使用。无运行时 npm 依赖、打包器或二进制资源。
@@ -76,6 +81,12 @@ rebuild/replayTo/fromJSON 从动作顺序重建派生状态。非法动作、错
 4 人为标准模式；2/3 人为每人一色、20×20 的简化模式，保留标准落子和计分，未实现官方双人两色/三人共享色变体。
 规则来源：https://service.mattel.com/instruction_sheets/R1983-0920.pdf。
 旧版 1 保留旧解释器与旧计分，仅在 UI 回放/导出；新局和 LAN 使用规则 2，未知版本拒绝。
+
+### 合法动作枚举
+
+首手只取自己的起始角；后续取空闲且未与同色边接触的角邻接点。每个朝向以「连接点减棋子内格偏移」生成候选锚点，去重、按行列排序，再交给 canPlace 判定。旧版 1 用边邻接连接点保留旧解释语义。
+任意合法棋子必有一格覆盖连接点，因此不会漏掉合法锚点；朝向与锚点顺序与原全棋盘穷举保持一致。hasAnyMove 和有 limit 的 allLegalActions 达到目标立即返回，不先生成完整列表。
+allLegalActions 对终局、已退出或已出完的玩家返回 []；只有进行中当前玩家确实无着法时返回 pass。独立穷举实现位于 tests/placement-reference.js；等价验证不依赖候选生成器。
 
 ## 4. 棋谱协议
 
@@ -128,8 +139,11 @@ REST 超时为 10 秒；SSE 重连通过原 token 检查席位，全量状态恢
 
 大厅离席会整理 slot，并通过 self 更新客户端；对局中保持 slot 与玩家下标稳定，轮到已离席者时通过共享引擎记录 resign。
 房主转移给留下的玩家。至少两位留席可直接再战，仅一位则回大厅；再战会建立新 gameId、按新人数重排颜色。
-CLI 默认用临时文件写入后 rename 保存 server/rooms.json；启动时校验恢复游戏和身份，过期房间不加载。
-createServer 不传 storePath 则为测试内存服务；同一进程仅管理一套 rooms。服务不是数据库，不提供跨进程并发或服务器磁盘故障恢复保证。
+CLI 通过 room-store 将完整快照写入临时文件、fsync、关闭后 rename 替换 server/rooms.json。建房/加入/开局/动作/离席/踢人/再战及过期回收均在事务中：先快照内存，修改并存盘，成功后才回复、广播或关闭被踢连接；失败恢复内存及原磁盘文件，返回 storage_failed（503）。异步读取请求后再次确认房间仍在 Map 中，避免对已移除房间提交。
+本机重复验证复现 Windows rename 的临时 EPERM。对 EPERM/EBUSY/EACCES 最多重试 4 次，总同步等待上限 50ms；占用解除则继续原子替换，持续失败仍回滚。日志只输出错误码，不输出房间 token 或原始文件内容；30 轮完整服务可靠性重复验证通过。
+恢复时逐房校验人数、阶段、时间、唯一 token、房主/座位与共享引擎状态，坏房间隔离而不阻断后续健康房间，过期房间跳过。坏数据原文保存在 rooms.json.invalid.tmp；整个 JSON 损坏则保留原文并报 storage_corrupt，停止启动，避免静默覆盖。恢复备份含连接身份，同样不入库或对外托管。
+旧规则 1 的房间同样保留原文并隔离，不能绕过只读历史约定继续非标准联机局；原文中的游戏可作为旧棋谱回放，需重新建房使用当前规则。
+createServer 不传 storePath 则为测试内存服务；同一进程仅管理一套 rooms。并发请求由单进程事务串行处理；不支持多个服务进程共写同一文件，也不保证突发断电下目录元数据的持久性。
 两小时无活动回收，活跃 SSE 心跳维持房间；仅关闭页面不会视为主动弃权。
 
 静态托管白名单仅为 index.html、styles.css 和 js 下直接脚本，不暴露 .git、文档、服务端源码或 rooms.json。
@@ -139,7 +153,7 @@ createServer 不传 storePath 则为测试内存服务；同一进程仅管理�
 
 | 键 | 内容 |
 | --- | --- |
-| blokus.settings.v1 | lang/sound/lastSeatCount |
+| blokus.settings.v1 | lang/sound/lastSeatCount/patternMode（字母辅助，默认 false） |
 | blokus.current.v1 | 未完成单机局 id（旧局入口转只读回放） |
 | blokus.index.v1 | id/时间/模式/规则/玩家/比分/步数/status/deletedAt 摘要 |
 | blokus.game.&lt;id&gt; | 单局 bks-json 记录 |
@@ -150,6 +164,7 @@ createServer 不传 storePath 则为测试内存服务；同一进程仅管理�
 容量以 blokus.* 字符串 UTF-16 字节估算，上限 200 局/4 MiB；可回收最旧终局或回收站记录，正文同步删除，也清理已有孤儿正文。
 未结束未删除对局受保护。删除只标记 deletedAt，回收站可恢复；容量清理是真正删除，备份应在清理前完成。
 备份导入全部校验后按 id 合并，设置一并恢复；超过容量整体拒绝。连接凭据与普通游戏数据分离，迁移棋谱不迁移身份。
+合并后历史按时间重新排序；若导入覆盖的记录已删除/终局，清除指向它的失效继续指针。显式 seatCount 必须与玩家数一致；除进行中的 finishedAt=null 外，提供的时间字段不能为 null，零时间戳保留原值。
 
 ## 7. 界面、回放与音效
 
@@ -157,11 +172,15 @@ ui 私有 app.state 为对局状态，app.replayState 为回放；离开回放�
 动态历史、终局、联网状态、提示、标题和错误文案均经中英词条；用户自定义昵称保持原文，默认昵称随语言切换。
 人数按钮与 lastSeatCount 同步，切换语言保留用户输入；昵称插入 DOM 使用 textContent 或转义。
 Clipboard API 不可用时使用含目标字符串的临时 textarea；失败有提示。棋盘用 pointer 事件，键盘快捷键避开输入框和弹窗。
+ui-records/ui-lan/ui-accessibility 分担棋谱与回放、网络生命周期、交互与焦点；ui.js 仍负责主路由和对局。保持传统 script，控制器只从显式 ctx 读取状态/回调，没有框架或构建迁移。
+棋盘 Canvas 负责视觉，旁边 sr-only 的 20×20 ARIA grid 提供坐标/颜色/玩家文本、单一 Tab 入口与 aria-activedescendant。键盘方向键/Home/End 移动，Enter/Space 放置；回放棋盘只读。鼠标保持点击落子，触屏点击仅预览，再点放置确认；状态区实时报告坐标、合法性及原因。
+格子映射按 Canvas 实际矩形比例换算，避免窄屏/小数像素错位；鼠标预览以 requestAnimationFrame 合并，格子文本仅在局面/语言变化时更新。固定四色之外，玩家标识常带 B/Y/R/G，patternMode 为占格增加字母；合法位置提示循环所选棋子着法，仅提供预览，不代玩家执行决策。
+弹窗隔离背景 inert、循环 Tab、Escape 关闭并恢复触发焦点；视图切换仅在真正切换时转移焦点。320/390px 布局消除横向溢出，底部固定操作区与 44px 触控目标，提示不覆盖操作区且不接收点击；弹窗开启时提示移到顶部。减少动画遵从 prefers-reduced-motion。
 Sound 用 WebAudio 合成，默认开启、首次用户手势解锁。联机按新动作触发落子/PASS，终局按 gameId 去重，在线状态广播不会重复胜利音效。
 存档反馈与网络状态独立展示，掉线/提交中禁用落子，恢复权威状态后清除旧选择。
 
 ## 8. 验证与扩展
 
-npm run test:all 包含 673 项单元、服务自检、22 项服务可靠性、44 项单机浏览器、28 项联机浏览器；证据及适用边界见 IMPLEMENTATION 和 REQUIREMENTS。
-合法着法枚举目前遍历朝向与棋盘，角点候选优化、更多设备无障碍/触控验证和 UI 模块拆分属于后续改善。
+npm run test:all 包含 957 项单元、服务自检、42 项服务可靠性、61 项单机浏览器、28 项联机浏览器；证据及适用边界见 IMPLEMENTATION 和 REQUIREMENTS。
+tests/benchmark-rules.js 校验固定 32 手局面的结果一致后测量，预热后 10 次采样：本机一次记录穷举约 14.42ms、候选约 2.60ms（约 5.5 倍），不代表所有局面或设备。真实手机/读屏软件、多设备及不同系统验证仍待现场验收。
 AI 可复用 allLegalActions/createGame/applyAction/rebuild；注册表、只读上下文构建、异步调度器尚未实现，R12 验收为设计与参数文档。

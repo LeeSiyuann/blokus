@@ -74,6 +74,7 @@ function validSettings(v) {
   return {
     lang: v && v.lang === 'en' ? 'en' : 'zh',
     sound: !v || v.sound !== false,
+    patternMode: !!(v && v.patternMode),
     lastSeatCount: v && [2, 3, 4].includes(v.lastSeatCount) ? v.lastSeatCount : 4
   };
 }
@@ -223,11 +224,13 @@ function importBackup(b) {
         list.push(s);
       d[K.game(g.id)] = JSON.stringify(e.record);
     }
+    list.sort((a,b)=>Number(b.updatedAt || Date.parse(b.createdAt))-Number(a.updatedAt || Date.parse(a.createdAt)));
     d[K.index] = JSON.stringify(list);
     d[K.settings] = JSON.stringify(validSettings(b.settings));
     const current =
         list.find(s => s.id === b.current && !s.deletedAt && s.status === 'playing' && s.mode !== 'lan');
     if (current) d[K.current] = JSON.stringify(current.id);
+    else if (!list.some(s=>s.id===getCurrent() && !s.deletedAt && s.status==='playing' && s.mode!=='lan')) delete d[K.current];
     if (list.length > MAX_GAMES || bytes(d) > MAX_BYTES) throw new Error('quota');
   });
 }

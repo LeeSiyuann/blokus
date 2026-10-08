@@ -90,7 +90,7 @@ const DICT = {
     'game.disconnected': '连接已断开',
     'game.passDone': '已停一手',
     'game.copied': '棋谱已复制',
-    'game.hintSelect': '点击棋子 → 点击棋盘 → 落子',
+    'game.hintSelect': '选择棋子，预览位置并确认落子',
     'history.title': '历史对局',
     'history.empty': '暂无历史对局，先来一局吧。',
     'history.moves': '步',
@@ -227,7 +227,7 @@ const DICT = {
     'game.disconnected': 'Disconnected',
     'game.passDone': 'Passed',
     'game.copied': 'Record copied',
-    'game.hintSelect': 'Pick a piece → click the board → place',
+    'game.hintSelect': 'Select a piece, preview a position, then place',
     'history.title': 'Game history',
     'history.empty': 'No games yet — play one first.',
     'history.moves': 'moves',
@@ -426,6 +426,22 @@ function getLang() {
   return lang;
 }
 
+Object.assign(DICT.zh, {
+  'access.pattern':'字母辅助', 'access.instructions':'触屏：选棋子后轻触棋盘预览，再点落子确认。键盘：Tab 到棋盘，方向键移动，R/F 旋转/翻转，Enter 落子。',
+  'access.replayInstructions':'键盘：Tab 到回放棋盘，方向键浏览格子；回放控件支持 Tab 和 Enter。',
+  'access.board':'对局棋盘', 'access.replayBoard':'回放棋盘', 'access.empty':'空格', 'access.valid':'可落子', 'access.invalid':'不可落子',
+  'access.hint':'提示落点', 'access.noHint':'这枚棋子没有合法落点，请换棋子。', 'access.piece':'选择棋子 {id}，{n} 格', 'access.replayStep':'回放步数',
+  'color.blue':'蓝方 B', 'color.yellow':'黄方 Y', 'color.red':'红方 R', 'color.green':'绿方 G',
+  'err.storage_failed':'主机保存失败，本次操作已回滚，请检查主机磁盘后重试。', 'err.storage_corrupt':'主机房间快照损坏，请检查原文备份。'
+});
+Object.assign(DICT.en, {
+  'access.pattern':'Letter cues', 'access.instructions':'Touch: select a piece, tap the board to preview, then confirm with Place. Keyboard: Tab to the board, use arrows, R/F to rotate/flip, Enter to place.',
+  'access.replayInstructions':'Keyboard: Tab to the replay board and use arrows to inspect cells; Tab and Enter operate replay controls.',
+  'access.board':'Game board', 'access.replayBoard':'Replay board', 'access.empty':'Empty', 'access.valid':'Legal placement', 'access.invalid':'Illegal placement',
+  'access.hint':'Hint', 'access.noHint':'No legal placement for this piece. Select another piece.', 'access.piece':'Select {id}, {n} squares', 'access.replayStep':'Replay move',
+  'color.blue':'Blue B', 'color.yellow':'Yellow Y', 'color.red':'Red R', 'color.green':'Green G',
+  'err.storage_failed':'The host could not save. This action was rolled back. Check host storage and retry.', 'err.storage_corrupt':'Host room snapshot is corrupt. Check the preserved backup.'
+});
 function applyI18n(root) {
   const scope = root || document;
   scope.querySelectorAll('[data-i18n]').forEach((el) => {
@@ -434,6 +450,7 @@ function applyI18n(root) {
   scope.querySelectorAll('[data-i18n-ph]').forEach((el) => {
     el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph')));
   });
+  scope.querySelectorAll('[data-i18n-aria]').forEach(el=>el.setAttribute('aria-label',t(el.getAttribute('data-i18n-aria'))));
   scope.querySelectorAll('[data-i18n-title]').forEach((el) => {
     el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
   });

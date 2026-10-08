@@ -28,6 +28,8 @@
 - 联机可刷新恢复同一座位，显示连接/在线状态；支持退出、房主踢人、房主转移和同房再战。离席记录为 RESIGN；关页面或临时断线保留座位。
 - CLI 服务自动保存房间，重启可恢复未过期的对局；导入的联机棋谱用于回放，恢复席位须使用原浏览器连接身份。
 - 中英文切换及音效设置持久化；WebAudio 在首次用户手势后启用，关闭后保持静音。
+- 触屏点击先预览，再用「放置」确认；键盘 Tab 进入棋盘，方向键移动、Enter/Space 放置，R/F 旋转/翻转。弹窗支持 Tab 循环、Escape 关闭并恢复焦点。
+- 「提示落点」浏览所选棋子的合法位置，由玩家确认后放置；可开启「字母辅助」，在棋盘用 B/Y/R/G 区分四色，设置随备份迁移。棋盘与回放提供格子坐标/颜色/玩家的读屏文本。
 
 规则依据：[Mattel Blokus 官方说明书](https://service.mattel.com/instruction_sheets/R1983-0920.pdf)。
 
@@ -38,6 +40,7 @@
 
 浏览器容量按 200 局 / 4 MiB 管理：自动回收最旧的终局或回收站记录及其正文，保留正在进行的对局；容量仍不足则提示失败。清除浏览器数据或换浏览器前请备份。
 房间无活动两小时回收；主机需保留被 gitignore 的 `server/rooms.json`。仅面向可信局域网，跨网段/NAT 和公网部署不在本版本范围内。
+房间操作先落盘再确认/广播，磁盘写入失败时回滚内存并返回错误。启动恢复逐房校验，坏房间隔离且原文件保存在 `server/rooms.json.invalid.tmp`；整个文件损坏时停止启动，避免覆盖。该备份含私人连接身份，应与房间文件一起妥善保管。
 
 ## 文档
 
@@ -48,16 +51,17 @@
 ## 开发与验证
 
 ```bash
-node tests/run-all.js                  # 单元与数据可靠性：673 项
+node tests/run-all.js                  # 单元与数据可靠性：957 项
 node server/lan-server.js --port 18345 --selftest
-node tests/server-reliability.js       # 服务端恢复/鉴权/生命周期：22 项
-node tests/browser-smoke.js            # 单机界面：44 项
+node tests/server-reliability.js       # 恢复/鉴权/生命周期/磁盘失败/并发：42 项
+node tests/browser-smoke.js            # 单机/键盘/触屏/窄屏界面：61 项
 node tests/browser-lan-smoke.js        # 双页面联机：28 项
 npm run test:all                       # 上述全部验证
+npm run benchmark                     # 穷举与候选锚点枚举比较（校验结果一致）
 ```
 
 单元测试和服务需要 Node 18+；浏览器测试使用 Node 22+ 的内置 WebSocket 及已安装的 Chrome/Edge，无 npm 依赖。
-2026-10-08 全部通过，截图位于 `output/playwright/`（不入库）。联机已验证同机两个独立页面；真实跨设备、防火墙和 macOS/Linux 启动还需现场验证。
+2026-10-09 全部通过，截图位于 `output/playwright/`（不入库）。移动端已验证 Chrome 触屏事件与 320/390px 视口；真实手机/读屏软件、跨设备、防火墙和 macOS/Linux 启动还需现场验证。
 
 ## 目录
 
@@ -65,6 +69,7 @@ npm run test:all                       # 上述全部验证
 index.html / styles.css  启动器、对局、历史、回放
 js/                     规则、状态机、棋谱、存储、渲染、网络与界面
 server/lan-server.js     Node 内置模块实现的局域网服务
+server/room-store.js     房间快照原子替换与逐房恢复校验
 scripts/                地址发现与浏览器启动辅助
 tests/                  Node/CDP 零依赖验证
 docs/                   规划、设计、验收、AI 接口与日志
