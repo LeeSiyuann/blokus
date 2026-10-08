@@ -143,8 +143,8 @@
     {
       "id": "M11",
       "title": "落实移动与无障碍、规则性能、UI模块拆分及服务存储事务改进",
-      "status": "doing",
-      "commit": null,
+      "status": "done",
+      "commit": "a83eb01",
       "deliverables": ["js", "server", "styles.css", "index.html", "tests", "docs", "README.md" ]
     }
   ]
