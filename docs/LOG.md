@@ -143,5 +143,5 @@
 - 界面与文件证据：实际浏览器 R/F、悔棋重放、PASS 终局、回放前后/跳转/4×/暂停/重开、设置刷新；实际下载文本/JSON 后校验内容，CDP 选择 JSON 文件、FileReader 导入；Clipboard API 拒绝后原生 execCommand 复制并恢复焦点；双击只新增一个房间，在线广播不影响导出选择。查看 16-selected-orientation.png 并复核 14-narrow-game.png/15-mobile-export.png。截图和下载 output/playwright/ 不入库。
 - Git/远端：fetch 成功，origin/main=85436dd 已有独立规则/旋转 PR，与本地 M9–M11 分叉；远端 BRANCH-RULES 禁止直推 main。创建 codex/full-feature-audit 交付当前完整版本，旋转改善适配本地控制器；不合并/覆盖 main，不创建 PR，不强制推送。
 - 静态检查：25 个 JavaScript 文件 node --check、git diff --check 均通过；工作区仅包含源代码/测试/文档，截图、下载及私有房间文件保持 gitignore。
-- 提交与推送：待本地提交后回填哈希，正常推送 origin/codex/full-feature-audit 并用 ls-remote 验证。
+- 提交与推送：实现提交 eea2a55（完整哈希 eea2a55184e921be2a7778b2479ae9e6535b04a5），git push -u origin codex/full-feature-audit 成功，ls-remote 与本地一致。收尾文档提交回填 done/定位，并继续同步同一分支；未创建 PR。
 - 遗留：真实跨设备/网络、防火墙/多网卡、物理手机/NVDA/VoiceOver、声音听测及其他系统/浏览器仍待现场验收；测试不保证所有环境无缺陷。main 分支合并留待用户后续流程。

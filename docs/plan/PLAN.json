@@ -150,9 +150,10 @@
     {
       "id": "M12",
       "title": "全面缺陷复核、全功能回归、修复与同步origin",
-      "status": "doing",
-      "commit": null,
+      "status": "done",
+      "commit": "eea2a55",
       "branch": "codex/full-feature-audit",
+      "note": "实现提交已正常推送 origin；ls-remote 与本地 eea2a55184e921be2a7778b2479ae9e6535b04a5 一致。main 保留原历史，未创建 PR。",
       "verification": "963 单元 / 自检 OK / 51 服务 / 90 单机 / 30 联机；额外 12 完整局、1095 次参考枚举比较、24 次棋谱往返",
       "deliverables": ["js", "server", "tests", "docs", "README.md", "origin"]
     }
